@@ -240,7 +240,6 @@
     button{transition:none}
   }
 </style>
-
 <canvas id="table"></canvas>
 
 <div class="chrome">
@@ -306,7 +305,20 @@
 </div>
 
 <script>
-(function(){
+/* --- inlined from sim.js by tools/build-body.mjs --- */
+/* Weightless Deck — the simulation.
+   ------------------------------------------------------------------
+   Loaded as a plain classic script so the game still runs by
+   double-clicking the HTML (no server, no build). Its top-level
+   declarations are intentionally global: the page script reads and
+   writes `selected`, `time` and `contactCount` directly, exactly as
+   it did when all of this lived in one closure. That goes away when
+   this becomes a real module in the TypeScript pass.
+
+   This file is DOM-free on purpose — no document, no window, no
+   canvas, no Math.random. test/physics.mjs runs it headless in node
+   and will fail loudly if that stops being true. */
+
 "use strict";
 
 /* ============================================================
@@ -754,6 +766,13 @@ function spark(x,y,j){
 }
 
 /* @sim-end ------------------------------------------------------ */
+</script>
+<script>
+(function(){
+"use strict";
+
+/* The simulation lives in sim.js, loaded above. */
+
 
 /* ---------- canvas + theme ---------- */
 

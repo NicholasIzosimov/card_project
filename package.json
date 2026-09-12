@@ -1,0 +1,13 @@
+{
+  "name": "weightless-deck",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A 2D rigid-body card sandbox. Millimetres, grams, seconds.",
+  "scripts": {
+    "test": "node tools/build-body.mjs --check && node test/physics.mjs && node test/smoke.mjs",
+    "physics": "node test/physics.mjs",
+    "physics:update": "node test/physics.mjs --update",
+    "smoke": "node test/smoke.mjs",
+    "build": "node tools/build-body.mjs"
+  }
+}

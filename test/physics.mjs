@@ -23,29 +23,23 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const GAME = join(HERE, "..", "Weightless Deck.html");
+const SIM = join(HERE, "..", "sim.js");
 const GOLDEN = join(HERE, "golden.json");
 const UPDATE = process.argv.includes("--update");
 
-/* ---------- load the sim out of the game file ---------- */
+/* ---------- load the sim ---------- */
 
 function loadSim() {
-  const html = readFileSync(GAME, "utf8");
-  const a = html.indexOf("/* @sim-start");
-  const b = html.indexOf("/* @sim-end");
-  if (a < 0 || b < 0) {
-    throw new Error("@sim-start / @sim-end markers not found in " + GAME);
-  }
-  const src = html.slice(a, b);
+  const src = readFileSync(SIM, "utf8");
 
   for (const bad of ["document.", "window.", "Math.random("]) {
     if (src.includes(bad)) {
-      throw new Error(`sim region is no longer headless: found ${bad}`);
+      throw new Error(`sim.js is no longer headless: found ${bad}`);
     }
   }
 
   const factory = new Function(
-    '"use strict";\n' + src +
+    src +
     "\nreturn { setSeed, rnd, deal, scatter, step, cards, opts, DT, BW, BH," +
     "  select(i){ selected = (i == null ? null : cards[i]); } };"
   );
