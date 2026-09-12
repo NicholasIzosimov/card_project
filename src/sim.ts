@@ -26,6 +26,118 @@
    and will fail loudly if that stops being true. */
 
 
+import type { Bus } from "./bus.ts";
+
+/* ---------- what a table is made of ----------
+   These describe the state the solver already kept; nothing here is
+   new. A body is a plain mutable object on purpose — the solver
+   touches every field of every card several times a tick, and the
+   cost of anything cleverer would land squarely in the hot loop. */
+
+export interface Suit { g: string; red: boolean }
+
+export interface Vec { x: number; y: number }
+
+/** one point of a contact manifold, and how deep it is */
+export interface ContactPoint extends Vec { pen: number }
+
+export interface Manifold {
+  a: Card; b: Card;
+  nx: number; ny: number;        /* normal, always pointing a -> b */
+  pts: ContactPoint[];
+  pen: number;
+}
+
+export interface Card {
+  rank: string;
+  suit: Suit;
+
+  x: number; y: number; a: number;       /* position, mm; angle, rad */
+  vx: number; vy: number; w: number;     /* velocity, mm/s; spin, rad/s */
+  hw: number; hh: number;                /* half-extents, mm — these
+                                            grow with SEL_GROW */
+  massScale: number;                     /* 1, or SEL_MASS when held */
+  m: number; invM: number; invI: number;
+  fx: number; fy: number; tq: number;    /* force and torque, this tick */
+
+  ph: number; ph2: number;               /* drift harmonic phases */
+
+  sel: number;                           /* 0..1 eased selection */
+  hov: number;                           /* 0..1 eased hover */
+  hovering: boolean;
+  faceUp: boolean;
+  flip: number; flipping: number;
+  glow: number;                          /* set by a hard contact,
+                                            decayed by step() */
+}
+
+export interface Options {
+  grav: number;                          /* mm/s² */
+  rest: number;                          /* restitution, 0..1 */
+  drift: number;                          /* ambient drift, mm/s² */
+  air: number;                            /* damping, /s */
+}
+
+interface Drag {
+  body: Card | null;
+  lx: number; ly: number;                /* grab point in the card frame */
+  tx: number; ty: number;                /* pointer target, mm */
+  active: boolean;
+}
+
+/* ---------- the interface ----------
+   Everything outside sim.ts sees this and nothing else. The state is
+   `readonly` deliberately: they are getters over closure variables, so
+   the compiler refusing `sim.time = 0` is the same rule the runtime
+   already enforced by not having a setter. */
+
+export interface Sim {
+  /* constants the frame loop and the renderer need */
+  readonly DT: number;
+  readonly MAX_STEPS: number;
+  readonly CARD_W: number;
+  readonly CARD_H: number;
+  readonly CARD_M: number;
+  readonly SEL_GROW: number;
+
+  /* which kind of contact a "contact" event was */
+  readonly CONTACT_CARD: number;
+  readonly CONTACT_WALL: number;
+
+  /* state — read it, never write it */
+  readonly cards: readonly Card[];
+  readonly time: number;
+  readonly contactCount: number;
+  readonly selected: Card | null;
+  readonly dragging: boolean;
+  readonly width: number;
+  readonly height: number;
+
+  /* setup */
+  setSeed(s: number): void;
+  rnd(): number;
+  setBounds(w: number, h: number): void;
+  setOption(k: keyof Options, v: number): void;
+
+  /* intents — the only way in */
+  deal(n: number, scatter: boolean): void;
+  scatter(): void;
+  select(b: Card | null, snap?: boolean): void;
+  flip(b: Card | null): void;
+  setHover(b: Card | null): void;
+  beginDrag(b: Card | null, x: number, y: number): void;
+  dragTo(x: number, y: number): void;
+  endDrag(): void;
+  stir(speed: number, spin: number): void;
+
+  /* queries */
+  pick(x: number, y: number): Card | null;
+
+  /* the clock */
+  step(dt: number): void;
+  resetContacts(): void;
+}
+
 /* ============================================================
    Weightless Deck — 2D rigid-body sandbox
    Units: millimetres, grams, seconds.
@@ -38,10 +150,7 @@
    node (test/physics.mjs extracts exactly this region). Keep it that
    way: no document, no window, no canvas, no Math.random. */
 
-export function createSim(bus){
-
-  /* headless callers (test/physics.mjs) run without a bus */
-  bus = bus || { emit:function(){} };
+export function createSim(bus: Bus): Sim {
 
   var CARD_W = 63, CARD_H = 88, CARD_M = 1.8;
   var DT = 1/120, MAX_STEPS = 4, ITER = 8;
@@ -73,7 +182,7 @@ export function createSim(bus){
   var evBuf = new Float64Array(512 * EV_STRIDE);
   var evCount = 0;
 
-  function reportContact(kind, x, y, j){
+  function reportContact(kind: number, x: number, y: number, j: number): void {
     var o = evCount * EV_STRIDE;
     if(o + EV_STRIDE > evBuf.length){
       /* grows once and stays grown, so the hot path never allocates */
@@ -85,7 +194,7 @@ export function createSim(bus){
     evCount++;
   }
 
-  function flushContacts(){
+  function flushContacts(): void {
     for(var i=0;i<evCount;i++){
       var o = i * EV_STRIDE;
       bus.emit("contact", evBuf[o+1], evBuf[o+2], evBuf[o+3], evBuf[o]);
@@ -99,8 +208,8 @@ export function createSim(bus){
      the feel has not drifted. Never call rnd() below this line. */
 
   var SEED = 1, _rs = 1;
-  function setSeed(s){ SEED = (s >>> 0) || 1; _rs = SEED; }
-  function rnd(){                                    /* mulberry32 */
+  function setSeed(s: number): void { SEED = (s >>> 0) || 1; _rs = SEED; }
+  function rnd(): number {                                    /* mulberry32 */
     _rs = (_rs + 0x6D2B79F5) | 0;
     var t = Math.imul(_rs ^ (_rs >>> 15), 1 | _rs);
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
@@ -109,11 +218,11 @@ export function createSim(bus){
   setSeed(1);
 
 
-  function clamp(v,a,b){ return v<a?a:(v>b?b:v); }
+  function clamp(v: number, a: number, b: number): number { return v<a?a:(v>b?b:v); }
 
   /* ---------- geometry ---------- */
 
-  function verts(b){
+  function verts(b: Card): Vec[] {
     var c = Math.cos(b.a), s = Math.sin(b.a);
     var ax = c*b.hw, ay = s*b.hw, bx = -s*b.hh, by = c*b.hh;
     return [
@@ -123,11 +232,11 @@ export function createSim(bus){
       {x:b.x+ax-bx, y:b.y+ay-by}
     ];
   }
-  function projRadius(b,n){
+  function projRadius(b: Card, n: Vec): number {
     var c = Math.cos(b.a), s = Math.sin(b.a);
     return Math.abs(b.hw*(n.x*c + n.y*s)) + Math.abs(b.hh*(n.x*-s + n.y*c));
   }
-  function faceNormal(vs, i, cx, cy){
+  function faceNormal(vs: Vec[], i: number, cx: number, cy: number): Vec {
     var p = vs[i], q = vs[(i+1)&3];
     var ex = q.x-p.x, ey = q.y-p.y;
     var L = Math.hypot(ex,ey) || 1;
@@ -136,10 +245,10 @@ export function createSim(bus){
     if(nx*mx + ny*my < 0){ nx = -nx; ny = -ny; }
     return {x:nx, y:ny};
   }
-  function clipSeg(v1, v2, nx, ny, o){
+  function clipSeg(v1: Vec, v2: Vec, nx: number, ny: number, o: number): Vec[] {
     var d1 = v1.x*nx + v1.y*ny - o;
     var d2 = v2.x*nx + v2.y*ny - o;
-    var out = [];
+    var out: Vec[] = [];
     if(d1 <= 0) out.push(v1);
     if(d2 <= 0) out.push(v2);
     if(d1*d2 < 0){
@@ -151,12 +260,12 @@ export function createSim(bus){
 
   /* Separating-axis test between two oriented boxes, followed by
      reference/incident face clipping to get a real contact manifold. */
-  function collide(A,B){
+  function collide(A: Card, B: Card): Manifold | null {
     var dx = B.x-A.x, dy = B.y-A.y;
     var ca = Math.cos(A.a), sa = Math.sin(A.a);
     var cb = Math.cos(B.a), sb = Math.sin(B.a);
     var axes = [{x:ca,y:sa},{x:-sa,y:ca},{x:cb,y:sb},{x:-sb,y:cb}];
-    var best = Infinity, bn = null, fromA = true;
+    var best = Infinity, bn: Vec | null = null, fromA = true;
 
     for(var i=0;i<4;i++){
       var n = axes[i];
@@ -164,14 +273,14 @@ export function createSim(bus){
       if(ov <= 0) return null;
       if(ov < best - 1e-6){ best = ov; bn = n; fromA = i < 2; }
     }
-    var nx = bn.x, ny = bn.y;
+    var nx = bn!.x, ny = bn!.y;
     if(dx*nx + dy*ny < 0){ nx = -nx; ny = -ny; }   // always points A → B
 
     var ref = fromA ? A : B, inc = fromA ? B : A;
     var rnx = fromA ? nx : -nx, rny = fromA ? ny : -ny;
 
     var rv = verts(ref), iv = verts(inc);
-    var ri = 0, bestDot = -Infinity, k, fn;
+    var ri = 0, bestDot = -Infinity, k: number, fn: Vec;
     for(k=0;k<4;k++){
       fn = faceNormal(rv,k,ref.x,ref.y);
       var d = fn.x*rnx + fn.y*rny;
@@ -196,7 +305,7 @@ export function createSim(bus){
     if(seg.length < 2) return null;
 
     var rfn = faceNormal(rv, ri, ref.x, ref.y);
-    var pts = [];
+    var pts: ContactPoint[] = [];
     for(k=0;k<seg.length;k++){
       var sep = (seg[k].x-r1.x)*rfn.x + (seg[k].y-r1.y)*rfn.y;
       if(sep <= 0.001) pts.push({x:seg[k].x, y:seg[k].y, pen:-sep});
@@ -215,17 +324,17 @@ export function createSim(bus){
     {g:"♦", red:true},  {g:"♣", red:false}
   ];
 
-  var cards = [];
+  var cards: Card[] = [];
   var time = 0;
 
-  function setMass(b){
+  function setMass(b: Card): void {
     var m = CARD_M * b.massScale;
     b.m = m;
     b.invM = 1/m;
     b.invI = 12 / (m * (4*b.hw*b.hw + 4*b.hh*b.hh));
   }
 
-  function makeCard(rank, suit){
+  function makeCard(rank: string, suit: Suit): Card {
     var b = {
       rank:rank, suit:suit,
       x:0, y:0, a:0, vx:0, vy:0, w:0,
@@ -233,15 +342,15 @@ export function createSim(bus){
       massScale:1, m:CARD_M, invM:1/CARD_M, invI:1,
       fx:0, fy:0, tq:0,
       ph:rnd()*Math.PI*2, ph2:rnd()*Math.PI*2,
-      sel:0, hov:0, faceUp:true, flip:0, flipping:0, glow:0
+      sel:0, hov:0, hovering:false, faceUp:true, flip:0, flipping:0, glow:0
     };
     setMass(b);
     return b;
   }
 
-  function deal(n, scatter){
+  function deal(n: number, scatter: boolean): void {
     cards.length = 0;
-    var pool = [];
+    var pool: number[][] = [];
     for(var s=0;s<4;s++) for(var r=0;r<13;r++) pool.push([r,s]);
     for(var i=pool.length-1;i>0;i--){
       var j = (rnd()*(i+1))|0, t = pool[i]; pool[i] = pool[j]; pool[j] = t;
@@ -272,7 +381,7 @@ export function createSim(bus){
     bus.emit("deal", cards.length);
   }
 
-  function scatter(){
+  function scatter(): void {
     for(var i=0;i<cards.length;i++){
       var c = cards[i];
       if(c === selected) continue;
@@ -284,22 +393,22 @@ export function createSim(bus){
 
   /* ---------- solver ---------- */
 
-  var selected = null;
-  var drag = {body:null, lx:0, ly:0, tx:0, ty:0, active:false};
-  var opts = {grav:0, rest:0.55, drift:240, air:0.42};
+  var selected: Card | null = null;
+  var drag: Drag = {body:null, lx:0, ly:0, tx:0, ty:0, active:false};
+  var opts: Options = {grav:0, rest:0.55, drift:240, air:0.42};
   var contactCount = 0;
 
-  function applyImpulse(b, jx, jy, rx, ry){
+  function applyImpulse(b: Card, jx: number, jy: number, rx: number, ry: number): void {
     b.vx += jx*b.invM; b.vy += jy*b.invM;
     b.w  += (rx*jy - ry*jx)*b.invI;
   }
 
-  function solveWalls(b, iterScale){
+  function solveWalls(b: Card, iterScale: number): void {
     var vs = verts(b);
     var walls = [[1,0,0],[-1,0,-BW],[0,1,0],[0,-1,-BH]];
     for(var wI=0; wI<4; wI++){
       var nx = walls[wI][0], ny = walls[wI][1], off = walls[wI][2];
-      var hits = [], deepest = 0;
+      var hits: Vec[] = [], deepest = 0;
       for(var i=0;i<4;i++){
         var pen = off - (vs[i].x*nx + vs[i].y*ny);
         if(pen > 0){ hits.push(vs[i]); if(pen > deepest) deepest = pen; }
@@ -334,7 +443,7 @@ export function createSim(bus){
     }
   }
 
-  function solveManifold(m, first){
+  function solveManifold(m: Manifold, first: boolean): void {
     var A = m.a, B = m.b, nx = m.nx, ny = m.ny;
     var e = opts.rest, cn = m.pts.length;
     for(var i=0;i<cn;i++){
@@ -379,7 +488,7 @@ export function createSim(bus){
     }
   }
 
-  function positionalCorrect(m){
+  function positionalCorrect(m: Manifold): void {
     var A = m.a, B = m.b;
     var pen = 0;
     for(var i=0;i<m.pts.length;i++) if(m.pts[i].pen > pen) pen = m.pts[i].pen;
@@ -389,7 +498,7 @@ export function createSim(bus){
     B.x += m.nx * s * B.invM; B.y += m.ny * s * B.invM;
   }
 
-  function step(dt){
+  function step(dt: number): void {
     var i, c, n = cards.length;
     var cx = BW*0.5, cy = BH*0.5;
 
@@ -463,7 +572,7 @@ export function createSim(bus){
     }
 
     /* broadphase + narrowphase */
-    var manifolds = [];
+    var manifolds: Manifold[] = [];
     for(i=0;i<n;i++){
       var A = cards[i];
       var rA = Math.hypot(A.hw, A.hh);
@@ -520,7 +629,7 @@ export function createSim(bus){
      that it exists, so nothing outside this file has to know how a
      drag or a selection is represented. */
 
-  function setBounds(w, h){
+  function setBounds(w: number, h: number): void {
     BW = w; BH = h;
     /* the table just changed size under the cards — pull anything
        now outside the new rails back inside them */
@@ -531,24 +640,24 @@ export function createSim(bus){
     }
   }
 
-  function setOption(k, v){ opts[k] = v; }
+  function setOption(k: keyof Options, v: number): void { opts[k] = v; }
 
-  function select(b, snap){
+  function select(b: Card | null, snap?: boolean): void {
     selected = b || null;
     /* snap skips the ease — boot opens on a table that is already
        holding a card, not one easing into it */
     if(snap && selected) selected.sel = 1;
   }
 
-  function flip(b){
+  function flip(b: Card | null): void {
     if(b && !b.flipping){ b.flipping = 1; b.flip = 0; }
   }
 
-  function setHover(b){
+  function setHover(b: Card | null): void {
     for(var i=0;i<cards.length;i++) cards[i].hovering = (cards[i] === b);
   }
 
-  function beginDrag(b, x, y){
+  function beginDrag(b: Card | null, x: number, y: number): void {
     if(!b) return;
     var c = Math.cos(-b.a), s = Math.sin(-b.a);
     var dx = x-b.x, dy = y-b.y;
@@ -560,19 +669,19 @@ export function createSim(bus){
     drag.active = true;
   }
 
-  function dragTo(x, y){
+  function dragTo(x: number, y: number): void {
     if(!drag.active) return;
     drag.tx = x; drag.ty = y;
   }
 
-  function endDrag(){
+  function endDrag(): void {
     drag.active = false;
     drag.body = null;
   }
 
   /* opening state: every card gets a push, so the first frame shows a
      table already in motion rather than a grid about to start */
-  function stir(speed, spin){
+  function stir(speed: number, spin: number): void {
     for(var i=0;i<cards.length;i++){
       var c = cards[i];
       c.vx = (rnd()-0.5)*speed;
@@ -583,11 +692,11 @@ export function createSim(bus){
 
   /* contactCount accumulates across the substeps of one frame; the
      frame loop clears it, not step() */
-  function resetContacts(){ contactCount = 0; }
+  function resetContacts(): void { contactCount = 0; }
 
   /* ---------- queries ---------- */
 
-  function inside(b, x, y){
+  function inside(b: Card, x: number, y: number): boolean {
     var dx = x-b.x, dy = y-b.y;
     var c = Math.cos(-b.a), s = Math.sin(-b.a);
     var lx = c*dx - s*dy, ly = s*dx + c*dy;
@@ -596,7 +705,7 @@ export function createSim(bus){
 
   /* topmost wins, except that a held card always wins — letting go of
      the card you are dragging should not be a game of pixel golf */
-  function pick(x, y){
+  function pick(x: number, y: number): Card | null {
     if(selected && inside(selected, x, y)) return selected;
     for(var i=cards.length-1;i>=0;i--) if(inside(cards[i], x, y)) return cards[i];
     return null;

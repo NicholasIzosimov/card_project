@@ -19,8 +19,8 @@
    out as `game` so test/smoke.mjs can drive it, and it is parked on
    window as well so the browser console can poke at it. */
 
-import { createBus } from "./bus.js";
-import { createSim } from "./sim.js";
+import { createBus } from "./bus.ts";
+import { createSim } from "./sim.ts";
 import { createRules } from "./rules.js";
 import { createView } from "./view.js";
 

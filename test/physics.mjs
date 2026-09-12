@@ -22,11 +22,11 @@ import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
-import { createBus } from "../src/bus.js";
-import { createSim } from "../src/sim.js";
+import { createBus } from "../src/bus.ts";
+import { createSim } from "../src/sim.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const SIM = join(HERE, "..", "src", "sim.js");
+const SIM = join(HERE, "..", "src", "sim.ts");
 const GOLDEN = join(HERE, "golden.json");
 const UPDATE = process.argv.includes("--update");
 
@@ -43,7 +43,7 @@ function loadSim() {
 
   for (const bad of ["document.", "window.", "Math.random("]) {
     if (src.includes(bad)) {
-      throw new Error(`sim.js is no longer headless: found ${bad}`);
+      throw new Error(`sim.ts is no longer headless: found ${bad}`);
     }
   }
 
