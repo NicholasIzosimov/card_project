@@ -38,12 +38,11 @@ function loadSim() {
     }
   }
 
-  const factory = new Function(
-    src +
-    "\nreturn { setSeed, rnd, deal, scatter, step, cards, opts, DT, BW, BH," +
-    "  select(i){ selected = (i == null ? null : cards[i]); } };"
-  );
-  return factory();
+  /* sim.js is a classic script that defines exactly one name.
+     Evaluate it, then build a fresh isolated table: each scenario gets
+     its own cards, its own RNG stream and its own clock, so nothing
+     leaks from one run into the next. */
+  return new Function(src + "\nreturn createSim();")();
 }
 
 /* ---------- state capture ---------- */
@@ -99,7 +98,7 @@ const SCENARIOS = {
   "selected-40": (sim, ticks) => {
     sim.setSeed(2024);
     sim.deal(40, true);
-    sim.select(20);
+    sim.select(sim.cards[20]);
     for (let i = 0; i < ticks; i++) sim.step(sim.DT);
   }
 };
@@ -128,14 +127,14 @@ console.log("\nWeightless Deck — physics regression\n");
 console.log("invariants");
 for (const name of Object.keys(SCENARIOS)) {
   const sim = run(name, BULK_TICKS);
-  const diag = Math.hypot(sim.BW, sim.BH);
+  const diag = Math.hypot(sim.width, sim.height);
   let bad = null;
   for (const c of sim.cards) {
     for (const k of ["x","y","a","vx","vy","w","m"]) {
       if (!Number.isFinite(c[k])) { bad = `${k} is ${c[k]}`; break; }
     }
-    if (!bad && (c.x < -diag || c.x > sim.BW + diag ||
-                 c.y < -diag || c.y > sim.BH + diag)) {
+    if (!bad && (c.x < -diag || c.x > sim.width + diag ||
+                 c.y < -diag || c.y > sim.height + diag)) {
       bad = `card escaped the table at (${c.x.toFixed(1)}, ${c.y.toFixed(1)})`;
     }
     if (bad) break;

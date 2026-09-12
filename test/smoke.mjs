@@ -116,17 +116,17 @@ if (/<script\s+src=["']sim\.js["']\s*>/.test(html)) {
   fail("the page has no <script src=\"sim.js\"> tag — it will not run in a browser");
 }
 
-let sim;
+let game;
 try {
-  // sim.js declares at top level; give the page script the same scope
+  // both scripts are classic scripts sharing one scope, as in the page
   const load = new Function(
     "window","document","getComputedStyle","matchMedia","MutationObserver",
     "requestAnimationFrame","cancelAnimationFrame","devicePixelRatio",
     "performance","localStorage","location",
     simSrc + "\n;\n" + pageSrc +
-    "\nreturn { cards, step, DT, time, contactCount };"
+    "\nreturn game;"
   );
-  sim = load(
+  game = load(
     win, doc, win.getComputedStyle, win.matchMedia, win.MutationObserver,
     win.requestAnimationFrame, win.cancelAnimationFrame, win.devicePixelRatio,
     win.performance, win.localStorage, win.location
@@ -138,8 +138,8 @@ try {
   process.exit(1);
 }
 
-if (sim.cards && sim.cards.length > 0) {
-  pass(`boot dealt ${sim.cards.length} cards`);
+if (game.sim.cards && game.sim.cards.length > 0) {
+  pass(`boot dealt ${game.sim.cards.length} cards`);
 } else {
   fail("boot produced no cards — the page is not reaching deal()");
 }
@@ -165,11 +165,11 @@ const drew = drawCalls.count - before;
 drew > 0 ? pass(`render path issued ${drew.toLocaleString()} canvas calls`)
          : fail("render path issued no canvas calls — nothing is being drawn");
 
-const moved = sim.cards.some((c) => c.vx !== 0 || c.vy !== 0);
+const moved = game.sim.cards.some((c) => c.vx !== 0 || c.vy !== 0);
 moved ? pass("cards are in motion after boot")
       : fail("no card has velocity — the sim is not being stepped");
 
-const finite = sim.cards.every((c) =>
+const finite = game.sim.cards.every((c) =>
   Number.isFinite(c.x) && Number.isFinite(c.y) && Number.isFinite(c.a));
 finite ? pass("all card state finite after the render loop")
        : fail("NaN reached card state through the page path");

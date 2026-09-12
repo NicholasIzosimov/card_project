@@ -31,10 +31,12 @@ npm run build         # regenerate deck.body.html
 | `test/physics.mjs` | solver regression |
 | `test/smoke.mjs` | page boots and renders |
 
-`sim.js` declares its top level **globally on purpose**. The page reads and
-writes `selected`, `time` and `contactCount` directly, exactly as it did when
-everything lived in one closure. This is a deliberate interim state — it goes
-away in the TypeScript pass. Don't "fix" it in isolation.
+`sim.js` adds exactly one name to the page: `createSim()`, which returns one
+independent table — its own cards, its own RNG stream, its own clock. The
+object it returns is the entire interface. Reads go through getters
+(`sim.time`, `sim.selected`, `sim.contactCount`), writes go through intents
+(`select`, `flip`, `deal`, `scatter`, `beginDrag`, …). Nothing outside
+`sim.js` touches a body directly. Adding a fourth way in is how this rots.
 
 ## The two tests, and why there are two
 

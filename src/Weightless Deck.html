@@ -315,15 +315,25 @@
 
 <script src="sim.js"></script>
 <script>
-(function(){
+/* The page hands the running game back so tools can reach it:
+   test/smoke.mjs drives it, and the browser console can poke it. */
+var game = (function(){
 "use strict";
 
-/* The simulation lives in sim.js, loaded above. */
+/* The simulation lives in sim.js, loaded above. This script is
+   everything the sim is not: canvas rendering, DOM chrome, input and
+   the frame loop that drives them. It reads the table through the
+   interface createSim() returns and never writes to sim state —
+   every change goes back in as an intent. */
 
+var sim = createSim();
+
+function clamp(v,a,b){ return v<a?a:(v>b?b:v); }
 
 /* ---------- canvas + theme ---------- */
 
-reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+sim.setReducedMotion(reduced);
 
 var cv = document.getElementById("table");
 var ctx = cv.getContext("2d");
@@ -347,7 +357,7 @@ new MutationObserver(readTheme).observe(document.documentElement,{attributes:tru
 /* seed: ?seed=123 replays a table exactly; otherwise the clock */
 (function(){
   var q = /[?&]seed=(\d+)/.exec(location.search);
-  setSeed(q ? parseInt(q[1],10) : (Date.now() >>> 0));
+  sim.setSeed(q ? parseInt(q[1],10) : (Date.now() >>> 0));
 })();
 
 /* ---------- rendering ---------- */
@@ -414,10 +424,10 @@ function drawBack(c, w, h){
 
 function drawCard(b){
   var lift = b.sel + b.hov*0.28;
-  var breathe = reduced ? 0 : 0.011*Math.sin(time*1.35 + b.ph);
-  var vs = (1 + SEL_GROW*b.sel) * (1 + breathe);
+  var breathe = reduced ? 0 : 0.011*Math.sin(sim.time*1.35 + b.ph);
+  var vs = (1 + sim.SEL_GROW*b.sel) * (1 + breathe);
   var flipS = Math.abs(Math.cos(b.flip*Math.PI));
-  var w = CARD_W*PPM, h = CARD_H*PPM, r = w*0.082;
+  var w = sim.CARD_W*PPM, h = sim.CARD_H*PPM, r = w*0.082;
 
   ctx.save();
   ctx.translate(b.x*PPM, b.y*PPM);
@@ -487,6 +497,7 @@ function drawCard(b){
 function render(){
   ctx.clearRect(0,0,W,H);
 
+  var sparks = sim.sparks;
   for(var i=0;i<sparks.length;i++){
     var s = sparks[i];
     var k = s.t/s.life;
@@ -497,70 +508,54 @@ function render(){
     ctx.stroke();
   }
 
-  var order = cards.slice().sort(function(a,b){
+  var order = sim.cards.slice().sort(function(a,b){
     return (a.sel + a.hov*0.3) - (b.sel + b.hov*0.3);
   });
   for(var j=0;j<order.length;j++) drawCard(order[j]);
 }
 
-/* ---------- input ---------- */
+/* ---------- input ----------
+   Input never touches a body. It turns a pointer position into mm,
+   asks the sim what is there, then asks the sim to do something. */
 
 function toMM(ev){
   var r = cv.getBoundingClientRect();
   return {x:(ev.clientX - r.left)/PPM, y:(ev.clientY - r.top)/PPM};
 }
-function inside(b, p){
-  var dx = p.x-b.x, dy = p.y-b.y;
-  var c = Math.cos(-b.a), s = Math.sin(-b.a);
-  var lx = c*dx - s*dy, ly = s*dx + c*dy;
-  return Math.abs(lx) <= b.hw && Math.abs(ly) <= b.hh;
-}
-function pick(p){
-  if(selected && inside(selected, p)) return selected;
-  for(var i=cards.length-1;i>=0;i--) if(inside(cards[i], p)) return cards[i];
-  return null;
-}
 
 cv.addEventListener("pointerdown", function(ev){
   var p = toMM(ev);
-  var hit = pick(p);
-  if(!hit){ selected = null; drag.body = null; drag.active = false; cv.className = ""; return; }
-  selected = hit;
-  var c = Math.cos(-hit.a), s = Math.sin(-hit.a);
-  var dx = p.x-hit.x, dy = p.y-hit.y;
-  drag.body = hit;
-  drag.lx = c*dx - s*dy;
-  drag.ly = s*dx + c*dy;
-  drag.tx = p.x; drag.ty = p.y;
-  drag.active = true;
+  var hit = sim.pick(p.x, p.y);
+  if(!hit){ sim.select(null); sim.endDrag(); cv.className = ""; return; }
+  sim.select(hit);
+  sim.beginDrag(hit, p.x, p.y);
   cv.className = "grabbing";
   cv.setPointerCapture(ev.pointerId);
 });
 
 cv.addEventListener("pointermove", function(ev){
   var p = toMM(ev);
-  if(drag.active){ drag.tx = p.x; drag.ty = p.y; return; }
-  var hit = pick(p);
-  for(var i=0;i<cards.length;i++) cards[i].hovering = (cards[i] === hit);
+  if(sim.dragging){ sim.dragTo(p.x, p.y); return; }
+  var hit = sim.pick(p.x, p.y);
+  sim.setHover(hit);
   cv.className = hit ? "grabbable" : "";
 });
 
 function endDrag(ev){
-  if(!drag.active) return;
-  drag.active = false;
-  drag.body = null;
+  if(!sim.dragging) return;
+  sim.endDrag();
   cv.className = "grabbable";
   if(ev && cv.hasPointerCapture && cv.hasPointerCapture(ev.pointerId)) cv.releasePointerCapture(ev.pointerId);
 }
 cv.addEventListener("pointerup", endDrag);
 cv.addEventListener("pointercancel", endDrag);
 cv.addEventListener("pointerleave", function(){
-  if(!drag.active){ for(var i=0;i<cards.length;i++) cards[i].hovering = false; }
+  if(!sim.dragging) sim.setHover(null);
 });
 
 cv.addEventListener("dblclick", function(ev){
-  var hit = pick(toMM(ev));
-  if(hit && !hit.flipping){ hit.flipping = 1; hit.flip = 0; }
+  var p = toMM(ev);
+  sim.flip(sim.pick(p.x, p.y));
 });
 
 cv.addEventListener("contextmenu", function(ev){ ev.preventDefault(); });
@@ -568,9 +563,9 @@ cv.addEventListener("contextmenu", function(ev){ ev.preventDefault(); });
 window.addEventListener("keydown", function(ev){
   if(ev.target !== document.body) return;
   var k = ev.key.toLowerCase();
-  if(k === "s"){ scatter(); }
-  else if(k === "r"){ deal(cards.length, false); }
-  else if(k === "escape"){ selected = null; drag.body = null; drag.active = false; }
+  if(k === "s"){ sim.scatter(); }
+  else if(k === "r"){ sim.deal(sim.cards.length, false); }
+  else if(k === "escape"){ sim.select(null); sim.endDrag(); }
   else return;
   ev.preventDefault();
 });
@@ -585,26 +580,26 @@ function bind(id, valId, fmt, apply){
 }
 bind("gGrav","vGrav",
   function(v){ return (v*9.81).toFixed(2) + " m/s²"; },
-  function(v){ opts.grav = v*9810; });
+  function(v){ sim.setOption("grav", v*9810); });
 bind("gBounce","vBounce",
   function(v){ return v.toFixed(2); },
-  function(v){ opts.rest = v; });
+  function(v){ sim.setOption("rest", v); });
 bind("gDrift","vDrift",
   function(v){ return Math.round(v*520) + " mm/s²"; },
-  function(v){ opts.drift = v*520; });
+  function(v){ sim.setOption("drift", v*520); });
 bind("gDrag","vDrag",
   function(v){ return (v*1.5).toFixed(2) + " /s"; },
-  function(v){ opts.air = v*1.5; });
+  function(v){ sim.setOption("air", v*1.5); });
 
 var countEl = document.getElementById("gCount"), countOut = document.getElementById("vCount");
 countEl.addEventListener("input", function(){
   countOut.textContent = countEl.value;
-  deal(+countEl.value, false);
+  sim.deal(+countEl.value, false);
   document.getElementById("tBodies").textContent = countEl.value;
 });
 
-document.getElementById("bScatter").addEventListener("click", scatter);
-document.getElementById("bDeal").addEventListener("click", function(){ deal(+countEl.value, false); });
+document.getElementById("bScatter").addEventListener("click", function(){ sim.scatter(); });
+document.getElementById("bDeal").addEventListener("click", function(){ sim.deal(+countEl.value, false); });
 
 if(window.innerWidth < 720) document.getElementById("ctlPanel").open = false;
 
@@ -620,6 +615,7 @@ function telemetry(dt){
   if(tAcc < 0.11) return;
   tAcc = 0;
   var peak = 0, ke = 0;
+  var cards = sim.cards, selected = sim.selected;
   for(var i=0;i<cards.length;i++){
     var c = cards[i];
     var sp = Math.hypot(c.vx, c.vy);
@@ -627,7 +623,7 @@ function telemetry(dt){
     ke += 0.5*c.m*sp*sp + 0.5*(1/c.invI)*c.w*c.w;
   }
   tBodies.textContent = cards.length;
-  tContacts.textContent = contactCount;
+  tContacts.textContent = sim.contactCount;
   tMass.textContent = selected ? selected.m.toFixed(1) + " g" : "—";
   tMass.className = selected ? "hot" : "";
   tSpeed.textContent = Math.round(peak) + " mm/s";
@@ -643,12 +639,7 @@ function resize(){
   cv.height = Math.round(H*DPR);
   ctx.setTransform(DPR,0,0,DPR,0,0);
   PPM = clamp(Math.min(W,H)/640, 0.72, 2.2);
-  BW = W/PPM; BH = H/PPM;
-  for(var i=0;i<cards.length;i++){
-    var r = Math.hypot(cards[i].hw, cards[i].hh);
-    cards[i].x = clamp(cards[i].x, r, Math.max(r, BW-r));
-    cards[i].y = clamp(cards[i].y, r, Math.max(r, BH-r));
-  }
+  sim.setBounds(W/PPM, H/PPM);
 }
 window.addEventListener("resize", resize);
 
@@ -657,10 +648,10 @@ function frame(now){
   var dt = Math.min(0.05, (now - last)/1000);
   last = now;
   acc += dt;
-  contactCount = 0;
+  sim.resetContacts();
   var steps = 0;
-  while(acc >= DT && steps < MAX_STEPS){ step(DT); acc -= DT; steps++; }
-  if(steps === MAX_STEPS) acc = 0;
+  while(acc >= sim.DT && steps < sim.MAX_STEPS){ sim.step(sim.DT); acc -= sim.DT; steps++; }
+  if(steps === sim.MAX_STEPS) acc = 0;
   render();
   telemetry(dt);
   requestAnimationFrame(frame);
@@ -668,27 +659,24 @@ function frame(now){
 
 function boot(saved){
   resize();
-  deal(saved && saved.n ? saved.n : 14, false);
-  countEl.value = cards.length;
-  countOut.textContent = cards.length;
+  sim.deal(saved && saved.n ? saved.n : 14, false);
+  countEl.value = sim.cards.length;
+  countOut.textContent = sim.cards.length;
   /* open on a live table: one card already lifted, mid-drift */
-  selected = cards[(cards.length/2)|0];
-  selected.sel = 1;
-  for(var i=0;i<cards.length;i++){
-    cards[i].vx = (rnd()-0.5)*260;
-    cards[i].vy = (rnd()-0.5)*260;
-    cards[i].w  = (rnd()-0.5)*1.6;
-  }
-  for(var s=0;s<40;s++) step(DT);
+  sim.select(sim.cards[(sim.cards.length/2)|0], true);
+  sim.stir(260, 1.6);
+  for(var s=0;s<40;s++) sim.step(sim.DT);
   requestAnimationFrame(frame);
 }
 
 if(window.claude && window.claude.hot){
-  window.claude.hot.snapshot(function(){ return {n:cards.length}; });
+  window.claude.hot.snapshot(function(){ return {n:sim.cards.length}; });
   window.claude.hot.ready ? window.claude.hot.ready(boot) : boot(window.claude.hot.data || {});
 } else {
   boot({});
 }
+
+return { sim:sim };
 
 })();
 </script>
