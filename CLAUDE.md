@@ -10,34 +10,58 @@ move. Treat that as the thing being protected by everything below.
 
 ## Run it
 
-Open `src/Weightless Deck.html`. No server, no build step. The four scripts
-it loads must sit next to it. `?seed=12345` replays a table exactly.
-
 ```
-npm test              # everything (no dependencies to install)
+npm install           # once — vite and typescript
+npm run dev           # dev server, hot reload; open the URL it prints
+npm run build         # -> dist/
+npm run preview       # serve dist/ and open it
+
+npm test              # typecheck + physics + smoke
+npm run typecheck     # tsc --noEmit
 npm run physics       # solver regression only
 npm run smoke         # page boot only
-npm run build         # regenerate deck.body.html
 ```
+
+`?seed=12345` replays a table exactly, in dev or in the built page.
+
+**Double-click-to-run is gone**, as of the TypeScript pass. A built page
+cannot be opened straight off the filesystem either: ES modules are blocked
+under `file://`, so `dist/index.html` needs a server in front of it —
+`npm run preview` is the short way, and the Electron shell in step 5 will be
+the long one. `base` is `"./"`, so dist/ can be served from any subpath.
+
+`npm run build` also writes `dist/deck.body.html`, the self-contained
+embeddable fragment: the built page with the bundle inlined and the
+`<!doctype>/<html>/<head>/<body>` wrapper stripped, for dropping into a host
+page that cannot serve sibling assets.
 
 ## Layout
 
-Five classic scripts, loaded in dependency order. No modules: `type="module"`
-cannot load from `file://`, and double-click-to-run is worth more than import
-syntax until the TypeScript pass takes it away.
+Five ES modules in TypeScript. `src/index.html` loads exactly one of them.
 
 | file | what it is |
 |---|---|
-| `src/bus.js` | `createBus()` — one signal, many listeners |
-| `src/sim.js` | `createSim(bus)` — bodies and the solver. DOM-free, headless-testable. **Source of truth.** |
-| `src/rules.js` | `createRules(sim, bus)` — game state. Pure data, no rendering |
-| `src/view.js` | `createView(sim, rules, bus)` — canvas, DOM chrome, input |
-| `src/main.js` | builds the other four, runs the fixed-DT clock, boots |
-| `src/Weightless Deck.html` | styles, markup, and the five script tags |
-| `src/deck.body.html` | **generated** — never edit by hand |
-| `tools/build-body.mjs` | generates the above; `--check` fails if stale |
+| `src/bus.ts` | `createBus()` — one signal, many listeners |
+| `src/sim.ts` | `createSim(bus)` — bodies and the solver. DOM-free, headless-testable. **Source of truth.** |
+| `src/rules.ts` | `createRules(sim, bus)` — game state. Pure data, no rendering |
+| `src/view.ts` | `createView(sim, rules, bus)` — canvas, DOM chrome, input |
+| `src/main.ts` | the entry. Builds the other four, runs the fixed-DT clock, boots |
+| `src/index.html` | styles, markup, and one `<script type="module">` |
+| `vite.config.ts` | root is `src/`, build climbs out to `dist/` |
+| `tools/build-body.mjs` | flattens the build into the embed fragment |
 | `test/physics.mjs` | solver regression |
 | `test/smoke.mjs` | the page boots, renders, and scores |
+
+Imports name the file on disk — `./sim.ts`, not `./sim.js`. Node's type
+stripping resolves specifiers literally and will not rewrite the extension;
+`allowImportingTsExtensions` lets tsc and Vite agree with it.
+
+Nothing type-checks at build time: Vite (esbuild) and `node --strip-types`
+both just delete the types and run what is left. `npm run typecheck` is the
+only thing that actually checks, which is why it is the first thing
+`npm test` runs. It also means the source must stay **erasable** — no enums,
+no namespaces, no parameter properties. `erasableSyntaxOnly` in tsconfig
+rejects those where they are written rather than where node trips over them.
 
 ## The three layers
 
@@ -49,14 +73,14 @@ syntax until the TypeScript pass takes it away.
 ```
 
 The view also reads sim and rules directly, and writes to neither. Only
-`sim.js` writes to a body, and only through an intent it published itself.
+`sim.ts` writes to a body, and only through an intent it published itself.
 
 **sim** owns the bodies. It integrates, resolves contacts, and knows nothing
 about rules or rendering. `createSim(bus)` returns one independent table —
 its own cards, its own RNG stream, its own clock — and the object it returns
 is the entire interface. Reads go through getters (`sim.time`,
 `sim.selected`, `sim.contactCount`), writes go through intents (`select`,
-`flip`, `deal`, `scatter`, `beginDrag`, …). **Nothing outside `sim.js`
+`flip`, `deal`, `scatter`, `beginDrag`, …). **Nothing outside `sim.ts`
 touches a body.** Adding a third way in is how this rots.
 
 **rules** is game state: score, and eventually turns and legal moves. Pure
@@ -79,6 +103,20 @@ you for ignoring:
   an event object apiece would be the most expensive thing in the game.
   Payloads are positional arguments for the same reason.
 
+The typed version of that second rule is easy to lose. The idiomatic
+signature —
+
+```ts
+emit<K extends keyof Events>(type: K, ...args: Events[K]): void
+```
+
+— reads beautifully and allocates a rest array on **every call**, 156 times a
+tick, inside the loop the buffer exists to protect. So `Events` is a map of
+argument *tuples* used for documentation and call-site checking, and `emit`
+and `on` are an **overload set** over a fixed four-slot implementation. Each
+new event costs two overload lines. That is the right price. Do not "clean it
+up" into a discriminated union or an object payload.
+
 The sim reports **every** contact it resolves and takes no view on which are
 interesting. Thresholds belong to subscribers: the view sparks above j>30
 (cards) and j>24 (walls), and a future sound layer will want its own.
@@ -89,7 +127,7 @@ decoration no card ever feels, so they live in the view.
 
 ## The two tests, and why there are two
 
-`test/physics.mjs` runs `sim.js` headless across three scenarios
+`test/physics.mjs` runs `sim.ts` headless across three scenarios
 (`scatter-52`, `drift-30`, `selected-40` — the last exercises the `SEL_MASS`
 26× / `SEL_GROW` 19% path that mutates mass and collider size mid-solve).
 
@@ -102,12 +140,22 @@ difference in `Math.cos` between node builds becomes macroscopic. Individual
 trajectories diverge; bulk numbers don't. **The hash says something changed.
 The statistics say whether the feel changed.**
 
-`test/smoke.mjs` boots the real page against a stub DOM and drives 90
-animation frames. It loads whatever `<script src>` tags the page actually
-carries, in that order, and checks a contact reaches the rules layer and
-comes back out on the panel. The physics test cannot see whether the layers
-still agree with each other — this can, and with five files it is the test
-that earns its keep.
+Both suites are `.mjs` and import the `.ts` modules directly — node strips
+the types. Nothing is built or bundled before a test runs, so a test failure
+is never a build artefact.
+
+`test/physics.mjs` imports the sim and *also* reads it as text, to check no
+`document.`/`window.`/`Math.random(` has appeared. Importing proves it runs
+headless today; reading it proves nothing headless-breaking is hiding behind
+a branch this suite never takes.
+
+`test/smoke.mjs` stands a stub DOM up on `globalThis`, imports the entry
+module and drives 90 animation frames. The stubs have to be globals and the
+import has to be dynamic — a static import hoists above them and the modules
+find no `document`. It checks a contact reaches the rules layer and comes
+back out on the telemetry panel. The physics test cannot see whether the
+layers still agree with each other; this can, and with five files it is the
+test that earns its keep.
 
 ## Commit discipline
 
@@ -123,7 +171,7 @@ physics actually changed. Every other commit is provably inert.
 
 ## Where the feel lives
 
-In `sim.js`, and it is mostly *not* in the solver:
+In `sim.ts`, and it is mostly *not* in the solver:
 
 - two out-of-phase drift harmonics per card (`t*0.63/t*1.41`, `t*0.77/t*1.19`)
   with random per-card phase, so the table never visibly loops
@@ -168,6 +216,17 @@ structure-of-arrays rewrite of the solver to handle ~585k `applyImpulse` calls
 and ~725k allocations per second — which would make the constants above hostile
 to tuning.
 
+**TypeScript, strict, with no `any` anywhere in `src/`.** The solver is the
+code most worth typing honestly, so if strict mode makes something ugly the
+answer is to fix the shape, not to loosen the flag. The port needed exactly
+one non-null assertion (the 2d context) and one cast (inside the bus, where a
+listener table cannot express "the listeners under key K take Events[K]").
+
+**`var` is still `var` in `src/`.** The TypeScript port was types only; a
+var/let/const pass is a separate commit whenever someone wants it, and
+keeping the two apart is what made "the hashes did not move" a readable
+claim.
+
 **CSS is the design system.** `readTheme()` reads CSS custom properties and
 feeds them to the canvas, so one variable re-skins DOM and simulation together.
 Keep that bridge. DOM handles menus, HUD, settings, typography and
@@ -182,13 +241,16 @@ to a card.**
 The live game is `src/`; `test/`, `tools/` and `package.json` stay at the
 root and reach into it. The TypeScript port will get its own sibling folder.
 
-`html version/` is a **frozen reference** — the single-file version as it
+`html version/` is a **frozen reference** — the single-file JS version as it
 stood before the sim/rules/view split. Nothing reads it, no test covers it,
-and it should not be edited. It is there to diff against, and git history
-holds it either way.
+and it should not be edited. It is there to diff against, and it has earned
+that twice: both the layer split and the TypeScript port were checked by
+recording every canvas call and argument for 90 frames at a fixed seed and
+diffing the stream against this page. 118,105 operations, identical, from
+the source modules and from the minified bundle alike.
 
-**When the TS port works, it replaces `src/`.** Two live copies of the
-physics is the divergence hazard step 1 existed to remove.
+The TS port now *is* `src/`, so there is one live copy of the physics —
+which is what step 1 existed to guarantee.
 
 ## Roadmap
 
@@ -196,10 +258,12 @@ physics is the divergence hazard step 1 existed to remove.
 2. ~~Extract `sim.js`; generate `deck.body.html`~~ done
 3. ~~Rules/view split + event bus~~ done. Sound is the next thing that should
    subscribe to `contact` — it needs no new signal, only a listener.
-4. TypeScript. First step that forces a build and loses double-click-to-run —
-   delay while it's free to delay. `sim.js` → `sim.ts` should be nearly
-   mechanical.
-5. Electron shell + Steamworks. Independent of everything above.
+4. ~~TypeScript + Vite~~ done. `sim.js` → `sim.ts` was as mechanical as
+   hoped; the test harnesses were not. `new Function` over concatenated
+   sources does not survive ES modules, so both were rewritten to import.
+5. **Electron shell + Steamworks** — next. Independent of everything above.
+   `npm run build` already emits a `dist/` with relative asset URLs, which is
+   what the shell needs in order to load it off disk.
 
 Electron notes for later: the overlay needs `electronEnableSteamOverlay()`,
 `contextIsolation: false`, `nodeIntegration: true`. The usual overlay bug is a
