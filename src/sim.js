@@ -610,7 +610,7 @@ function createSim(bus){
   return {
     /* constants the frame loop and the renderer need */
     DT: DT, MAX_STEPS: MAX_STEPS,
-    CARD_W: CARD_W, CARD_H: CARD_H, SEL_GROW: SEL_GROW,
+    CARD_W: CARD_W, CARD_H: CARD_H, CARD_M: CARD_M, SEL_GROW: SEL_GROW,
 
     /* which kind of contact a "contact" event was */
     CONTACT_CARD: CONTACT_CARD, CONTACT_WALL: CONTACT_WALL,

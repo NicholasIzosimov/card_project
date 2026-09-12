@@ -18,7 +18,7 @@
 
 "use strict";
 
-function createView(sim, bus){
+function createView(sim, rules, bus){
 
   function clamp(v,a,b){ return v<a?a:(v>b?b:v); }
 
@@ -331,8 +331,18 @@ function createView(sim, bus){
 
   var tBodies = document.getElementById("tBodies"), tContacts = document.getElementById("tContacts"),
       tMass = document.getElementById("tMass"), tSpeed = document.getElementById("tSpeed"),
-      tEnergy = document.getElementById("tEnergy");
+      tEnergy = document.getElementById("tEnergy"), tImpact = document.getElementById("tImpact");
   var tAcc = 0;
+
+  /* energies arrive in g·mm²/s². Kinetic energy on this table sits in
+     the µJ range and the accumulated impact score climbs past it
+     within a minute, so the unit moves rather than the column. */
+  function energy(v){
+    var uj = v/1000;
+    if(uj < 1000) return uj.toFixed(1) + " µJ";
+    if(uj < 1e6)  return (uj/1000).toFixed(2) + " mJ";
+    return (uj/1e6).toFixed(2) + " J";
+  }
 
   function telemetry(dt){
     tAcc += dt;
@@ -351,7 +361,9 @@ function createView(sim, bus){
     tMass.textContent = selected ? selected.m.toFixed(1) + " g" : "—";
     tMass.className = selected ? "hot" : "";
     tSpeed.textContent = Math.round(peak) + " mm/s";
-    tEnergy.textContent = (ke/1000).toFixed(1) + " µJ";
+    tEnergy.textContent = energy(ke);
+    /* straight off the rules layer — the view does not keep score */
+    tImpact.textContent = energy(rules.impact);
   }
 
   /* ---------- the canvas ---------- */

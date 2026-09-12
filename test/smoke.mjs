@@ -1,14 +1,15 @@
 /* Weightless Deck — boot smoke test
    ------------------------------------------------------------------
    test/physics.mjs proves the solver is unchanged. It says nothing
-   about whether the *page* still works — whether sim.js and the
-   inline script still agree about their shared bindings, whether
-   boot() throws, whether the render and input paths run.
+   about whether the *page* still works — whether the layers still
+   agree about the interfaces between them, whether boot() throws,
+   whether the render and input paths run.
 
-   This loads both scripts against a stub DOM, boots the game, and
-   drives real animation frames. It is a wiring check, not a visual
-   one: it catches "sim.js and the page drifted apart", which is the
-   failure the physics test structurally cannot see.
+   This loads every script the page loads, against a stub DOM, boots
+   the game and drives real animation frames. It is a wiring check,
+   not a visual one: it catches "the layers drifted apart", which is
+   the failure the physics test structurally cannot see — and which
+   got more likely, not less, the moment there were four of them.
 
      node test/smoke.mjs
 */
@@ -96,7 +97,7 @@ const doc = {
   querySelector: () => null
 };
 
-/* ---------- load sim.js, then the page script, as the browser would ---------- */
+/* ---------- load the page the way the browser would ---------- */
 
 const html = readFileSync(join(ROOT, "Weightless Deck.html"), "utf8");
 
@@ -118,7 +119,7 @@ console.log("\nWeightless Deck — boot smoke test\n");
 
 /* the layers only mean anything if the page actually loads all of
    them, in an order where each one's dependencies already exist */
-const WANT = ["bus.js", "sim.js", "view.js", "main.js"];
+const WANT = ["bus.js", "sim.js", "rules.js", "view.js", "main.js"];
 const missing = WANT.filter((f) => !tags.includes(f));
 if (missing.length) {
   fail(`the page does not load ${missing.join(", ")} — it will not run in a browser`);
@@ -142,7 +143,7 @@ try {
     win.requestAnimationFrame, win.cancelAnimationFrame, win.devicePixelRatio,
     win.performance, win.localStorage, win.location
   );
-  pass("sim.js + page script load and boot without throwing");
+  pass("every script loads and the game boots without throwing");
 } catch (e) {
   fail("boot threw: " + e.message);
   console.log("\n" + e.stack.split("\n").slice(0, 6).join("\n") + "\n");
@@ -184,6 +185,21 @@ const finite = game.sim.cards.every((c) =>
   Number.isFinite(c.x) && Number.isFinite(c.y) && Number.isFinite(c.a));
 finite ? pass("all card state finite after the render loop")
        : fail("NaN reached card state through the page path");
+
+/* the whole point of the split: a contact in the solver has to reach
+   the rules layer and come back out on the panel. Each leg of that
+   can break silently, so check both. */
+if (game.rules.contacts > 0 && game.rules.impact > 0) {
+  pass(`rules scored ${game.rules.contacts.toLocaleString()} contacts ` +
+       `from the bus (${(game.rules.impact / 1000).toFixed(1)} µJ)`);
+} else {
+  fail("the rules layer saw no contacts — sim -> rules is not wired");
+}
+
+const shown = els.get("tImpact")?.textContent;
+/^[\d.]+ [µm]?J$/.test(shown ?? "")
+  ? pass(`telemetry shows the score: ${shown}`)
+  : fail(`the score never reached the panel — tImpact reads ${JSON.stringify(shown)}`);
 
 console.log(failures ? `\n\x1b[31m${failures} failing\x1b[0m\n`
                      : "\n\x1b[32mall checks passed\x1b[0m\n");

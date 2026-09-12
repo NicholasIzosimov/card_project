@@ -25,7 +25,8 @@ var sim = createSim(bus);
 var q = /[?&]seed=(\d+)/.exec(location.search);
 sim.setSeed(q ? parseInt(q[1],10) : (Date.now() >>> 0));
 
-var view = createView(sim, bus);
+var rules = createRules(sim, bus);
+var view = createView(sim, rules, bus);
 
 /* ---------- the clock ----------
    Fixed DT with an accumulator: the solver only ever sees the
@@ -71,6 +72,6 @@ if(window.claude && window.claude.hot){
   boot({});
 }
 
-return { sim:sim, view:view, bus:bus };
+return { sim:sim, rules:rules, view:view, bus:bus };
 
 })();
