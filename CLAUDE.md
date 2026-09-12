@@ -10,8 +10,8 @@ move. Treat that as the thing being protected by everything below.
 
 ## Run it
 
-Open `src/Weightless Deck.html`. No server, no build step. `sim.js`
-must sit next to it. `?seed=12345` replays a table exactly.
+Open `src/Weightless Deck.html`. No server, no build step. The four scripts
+it loads must sit next to it. `?seed=12345` replays a table exactly.
 
 ```
 npm test              # everything (no dependencies to install)
@@ -22,21 +22,70 @@ npm run build         # regenerate deck.body.html
 
 ## Layout
 
+Five classic scripts, loaded in dependency order. No modules: `type="module"`
+cannot load from `file://`, and double-click-to-run is worth more than import
+syntax until the TypeScript pass takes it away.
+
 | file | what it is |
 |---|---|
-| `src/sim.js` | the solver. DOM-free, headless-testable. **Source of truth.** |
-| `src/Weightless Deck.html` | the page: styles, markup, render + input + UI |
+| `src/bus.js` | `createBus()` — one signal, many listeners |
+| `src/sim.js` | `createSim(bus)` — bodies and the solver. DOM-free, headless-testable. **Source of truth.** |
+| `src/rules.js` | `createRules(sim, bus)` — game state. Pure data, no rendering |
+| `src/view.js` | `createView(sim, rules, bus)` — canvas, DOM chrome, input |
+| `src/main.js` | builds the other four, runs the fixed-DT clock, boots |
+| `src/Weightless Deck.html` | styles, markup, and the five script tags |
 | `src/deck.body.html` | **generated** — never edit by hand |
 | `tools/build-body.mjs` | generates the above; `--check` fails if stale |
 | `test/physics.mjs` | solver regression |
-| `test/smoke.mjs` | page boots and renders |
+| `test/smoke.mjs` | the page boots, renders, and scores |
 
-`sim.js` adds exactly one name to the page: `createSim()`, which returns one
-independent table — its own cards, its own RNG stream, its own clock. The
-object it returns is the entire interface. Reads go through getters
-(`sim.time`, `sim.selected`, `sim.contactCount`), writes go through intents
-(`select`, `flip`, `deal`, `scatter`, `beginDrag`, …). Nothing outside
-`sim.js` touches a body directly. Adding a fourth way in is how this rots.
+## The three layers
+
+```
+  sim ── events ──▶ bus ──┬──▶ rules
+                          └──▶ view
+   ▲                             │
+   └────────── intents ──────────┘
+```
+
+The view also reads sim and rules directly, and writes to neither. Only
+`sim.js` writes to a body, and only through an intent it published itself.
+
+**sim** owns the bodies. It integrates, resolves contacts, and knows nothing
+about rules or rendering. `createSim(bus)` returns one independent table —
+its own cards, its own RNG stream, its own clock — and the object it returns
+is the entire interface. Reads go through getters (`sim.time`,
+`sim.selected`, `sim.contactCount`), writes go through intents (`select`,
+`flip`, `deal`, `scatter`, `beginDrag`, …). **Nothing outside `sim.js`
+touches a body.** Adding a third way in is how this rots.
+
+**rules** is game state: score, and eventually turns and legal moves. Pure
+data — feed it events, read the numbers back. It never renders and never
+reads a body; if a rule needs something, the event grows a field.
+
+**view** draws the table and the chrome and turns input into intents. It
+reads sim and rules and mutates neither.
+
+Two rules about the `contact` event, both of which the solver will punish
+you for ignoring:
+
+- **Report on solver iteration 0 only.** `solveManifold` and `solveWalls`
+  visit every contact `ITER` (8) times per tick. The gate is the one
+  `spark()` always used; without it every listener hears each contact eight
+  times.
+- **Never allocate per contact.** Contacts go into a preallocated
+  `Float64Array` and are drained once at the end of the tick. The sim already
+  makes ~725k allocations/sec at 52 cards and reports ~156 contacts/tick;
+  an event object apiece would be the most expensive thing in the game.
+  Payloads are positional arguments for the same reason.
+
+The sim reports **every** contact it resolves and takes no view on which are
+interesting. Thresholds belong to subscribers: the view sparks above j>30
+(cards) and j>24 (walls), and a future sound layer will want its own.
+
+What belongs where, when it is not obvious: `glow` is body state — step()
+decays it, the renderer only reads it — so it stays in the sim. `sparks` are
+decoration no card ever feels, so they live in the view.
 
 ## The two tests, and why there are two
 
@@ -54,8 +103,11 @@ trajectories diverge; bulk numbers don't. **The hash says something changed.
 The statistics say whether the feel changed.**
 
 `test/smoke.mjs` boots the real page against a stub DOM and drives 90
-animation frames. The physics test cannot see whether `sim.js` and the page
-still agree about their shared bindings — this can.
+animation frames. It loads whatever `<script src>` tags the page actually
+carries, in that order, and checks a contact reaches the rules layer and
+comes back out on the panel. The physics test cannot see whether the layers
+still agree with each other — this can, and with five files it is the test
+that earns its keep.
 
 ## Commit discipline
 
@@ -99,8 +151,8 @@ target.** Staying minimal and procedural — no sprite art.
 fight this code: it mutates collider size every tick, swaps mass 1.8 g ↔ 46.8 g
 continuously, and works in millimetres (Box2D is tuned for 0.1–10 m). There is
 also no performance reason — 52 cards is ~193 broadphase pairs and ~144
-manifolds per tick, measured at **0.244 ms/tick in V8**, under 3% of a 120 Hz
-budget.
+manifolds per tick, measured at **0.26 ms/tick in V8** — 0.24 in the solver,
+the rest dispatching contact events — about 3% of a 120 Hz budget.
 
 **Do NOT adopt PixiJS.** This was evaluated and rejected. The renderer is
 deeply Canvas2D-idiomatic: `shadowBlur` ×3, a `createLinearGradient` per card
@@ -142,10 +194,8 @@ physics is the divergence hazard step 1 existed to remove.
 
 1. ~~Seeded RNG + physics regression test~~ done
 2. ~~Extract `sim.js`; generate `deck.body.html`~~ done
-3. **Rules/view split + event bus** — next. `solveManifold` already computes a
-   collision impulse `j` and fires `spark()` above `j > 30`; route that to an
-   event bus so sound, score and VFX all subscribe to one signal. Three layers:
-   sim (owns bodies, knows no rules) → rules (pure data, testable) → view.
+3. ~~Rules/view split + event bus~~ done. Sound is the next thing that should
+   subscribe to `contact` — it needs no new signal, only a listener.
 4. TypeScript. First step that forces a build and loses double-click-to-run —
    delay while it's free to delay. `sim.js` → `sim.ts` should be nearly
    mechanical.
