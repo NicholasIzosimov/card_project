@@ -243,10 +243,10 @@ root and reach into it. The TypeScript port went in place rather than into a
 sibling folder, so `src/` is the only live copy of the physics — which is
 what step 1 existed to guarantee.
 
-**`Don't Touch For Now/`** (formerly `html version/`) is a frozen reference:
-the single-file JS game as it stood before the sim/rules/view split. Nothing
-in the project reads it, no test covers it, no build sees it, and it should
-not be edited — the name is the instruction.
+**`HTML Version - Archive/`** is a frozen reference: the single-file JS game
+as it stood before the sim/rules/view split. Nothing in the project reads it,
+no test covers it, no build sees it, and it should not be edited. Archive
+means archive — it is a fixed point, not a second copy to keep in step.
 
 It is kept because it is the baseline every refactor gets diffed against, and
 it has earned that twice. Both the layer split and the TypeScript port were
