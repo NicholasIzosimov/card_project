@@ -18,7 +18,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const ROOT = join(HERE, "..");
+const ROOT = join(HERE, "..", "html version");
 
 /* ---------- the smallest DOM that will hold the game ---------- */
 

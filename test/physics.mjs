@@ -23,7 +23,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const SIM = join(HERE, "..", "sim.js");
+const SIM = join(HERE, "..", "html version", "sim.js");
 const GOLDEN = join(HERE, "golden.json");
 const UPDATE = process.argv.includes("--update");
 

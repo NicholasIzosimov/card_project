@@ -21,7 +21,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "html version");
 const CHECK = process.argv.includes("--check");
 
 const html = readFileSync(join(ROOT, "Weightless Deck.html"), "utf8");
