@@ -142,7 +142,7 @@ let game;
 try {
   /* dynamic, and after the stubs above: a static import would be
      hoisted above them and the modules would find no document */
-  ({ game } = await import("../src/main.js"));
+  ({ game } = await import("../src/main.ts"));
   pass("the entry module imports and the game boots without throwing");
 } catch (e) {
   fail("boot threw: " + e.message);

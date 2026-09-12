@@ -15,8 +15,20 @@
    works rather than something that is planned: the energy the table
    spends on contacts accumulates into a score. */
 
+import type { Bus } from "./bus.ts";
+import type { Sim } from "./sim.ts";
 
-export function createRules(sim, bus){
+/** What the rest of the game may ask the rules layer. Read-only:
+    rules change when something happens to the table, never because a
+    renderer or a control asked them to. */
+export interface Rules {
+  /** accumulated collision energy, g·mm²/s² */
+  readonly impact: number;
+  /** how many contacts went into it */
+  readonly contacts: number;
+}
+
+export function createRules(sim: Sim, bus: Bus): Rules {
 
   /* accumulated collision energy, g·mm²/s² — the same unit the
      telemetry panel already prints kinetic energy in, so the two
@@ -34,7 +46,7 @@ export function createRules(sim, bus){
      trade for a number on a panel; when a rule needs it exact, the
      contact event grows a mass field rather than the rules layer
      growing a way to look bodies up. */
-  bus.on("contact", function(x, y, j){
+  bus.on("contact", function(_x, _y, j){
     impact += j*j / (2*sim.CARD_M);
     contacts++;
   });

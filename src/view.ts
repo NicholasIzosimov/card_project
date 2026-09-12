@@ -16,23 +16,61 @@
    frame and doesn't follow a card, canvas for anything attached to
    one. */
 
+import type { Bus } from "./bus.ts";
+import type { Card, Sim } from "./sim.ts";
+import type { Rules } from "./rules.ts";
 
-export function createView(sim, rules, bus){
+/** The palette, lifted off the CSS custom properties on :root. Every
+    colour the canvas draws with comes from here, so a theme change is
+    a CSS change. */
+interface Theme {
+  face: string; faceLine: string; cardInk: string;
+  carmine: string; amber: string; amberBright: string;
+  back1: string; back2: string; shadow: string;
+  aura: string;                          /* "r,g,b", spliced into rgba() */
+}
 
-  function clamp(v,a,b){ return v<a?a:(v>b?b:v); }
+/** A contact ring, blooming and fading. Decoration: no card can feel one. */
+interface Spark { x: number; y: number; t: number; life: number; r: number }
+
+export interface View {
+  /** the window changed size; recompute scale and tell the sim */
+  resize(): void;
+  render(): void;
+  /** age the effects by one sim tick — not one frame */
+  advance(dt: number): void;
+  telemetry(dt: number): void;
+  /** put the card-count slider where the table actually is */
+  showCount(n: number): void;
+}
+
+export function createView(sim: Sim, rules: Rules, bus: Bus): View {
+
+  function clamp(v: number, a: number, b: number): number { return v<a?a:(v>b?b:v); }
+
+  /* The page is a fixed part of the build, so a missing element is a
+     broken build, not a case to handle. Say so by name rather than
+     failing later on a null. */
+  function need<T extends HTMLElement>(id: string): T {
+    var el = document.getElementById(id);
+    if(!el) throw new Error("the page is missing #" + id);
+    return el as T;
+  }
 
   /* ---------- canvas + theme ---------- */
 
   var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  var cv = document.getElementById("table");
-  var ctx = cv.getContext("2d");
+  var cv = need<HTMLCanvasElement>("table");
+  /* every browser this ships to has a 2d context; ! rather than a
+     branch that could never be taken */
+  var ctx = cv.getContext("2d")!;
   var W = 0, H = 0, DPR = 1, PPM = 1.4;
 
-  var theme = {};
-  function readTheme(){
+  var theme: Theme;
+  function readTheme(): void {
     var cs = getComputedStyle(document.documentElement);
-    function g(k){ return cs.getPropertyValue(k).trim(); }
+    function g(k: string): string { return cs.getPropertyValue(k).trim(); }
     theme = {
       face:g("--face"), faceLine:g("--face-line"), cardInk:g("--card-ink"),
       carmine:g("--carmine"), amber:g("--amber"), amberBright:g("--amber-bright"),
@@ -56,7 +94,7 @@ export function createView(sim, rules, bus){
      rebounding off something that cannot move. */
 
   var SPARK_CARD = 30, SPARK_WALL = 24, SPARK_MAX = 40;
-  var sparks = [];
+  var sparks: Spark[] = [];
 
   bus.on("contact", function(x, y, j, kind){
     if(j <= (kind === sim.CONTACT_WALL ? SPARK_WALL : SPARK_CARD)) return;
@@ -69,7 +107,7 @@ export function createView(sim, rules, bus){
 
   /* effects age on the sim's clock, not the display's — one call per
      tick, so a slow frame does not eat a spark */
-  function advance(dt){
+  function advance(dt: number): void {
     for(var i=sparks.length-1;i>=0;i--){
       var s = sparks[i];
       s.t += dt;
@@ -79,7 +117,7 @@ export function createView(sim, rules, bus){
 
   /* ---------- rendering ---------- */
 
-  function roundRect(c,x,y,w,h,r){
+  function roundRect(c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
     c.beginPath();
     c.moveTo(x+r,y);
     c.lineTo(x+w-r,y); c.quadraticCurveTo(x+w,y,x+w,y+r);
@@ -89,7 +127,7 @@ export function createView(sim, rules, bus){
     c.closePath();
   }
 
-  function drawFace(c, b, w, h){
+  function drawFace(c: CanvasRenderingContext2D, b: Card, w: number, h: number): void {
     var red = b.suit.red;
     c.fillStyle = red ? theme.carmine : theme.cardInk;
 
@@ -118,7 +156,7 @@ export function createView(sim, rules, bus){
     c.globalAlpha = 1;
   }
 
-  function drawBack(c, w, h){
+  function drawBack(c: CanvasRenderingContext2D, w: number, h: number): void {
     c.fillStyle = theme.back1;
     c.fillRect(-w/2, -h/2, w, h);
     c.save();
@@ -139,7 +177,7 @@ export function createView(sim, rules, bus){
     c.stroke();
   }
 
-  function drawCard(b){
+  function drawCard(b: Card): void {
     var lift = b.sel + b.hov*0.28;
     var breathe = reduced ? 0 : 0.011*Math.sin(sim.time*1.35 + b.ph);
     var vs = (1 + sim.SEL_GROW*b.sel) * (1 + breathe);
@@ -211,7 +249,7 @@ export function createView(sim, rules, bus){
     ctx.restore();
   }
 
-  function render(){
+  function render(): void {
     ctx.clearRect(0,0,W,H);
 
     for(var i=0;i<sparks.length;i++){
@@ -234,7 +272,7 @@ export function createView(sim, rules, bus){
      Input never touches a body. It turns a pointer position into mm,
      asks the sim what is there, then asks the sim to do something. */
 
-  function toMM(ev){
+  function toMM(ev: MouseEvent): { x: number; y: number } {
     var r = cv.getBoundingClientRect();
     return {x:(ev.clientX - r.left)/PPM, y:(ev.clientY - r.top)/PPM};
   }
@@ -257,7 +295,7 @@ export function createView(sim, rules, bus){
     cv.className = hit ? "grabbable" : "";
   });
 
-  function endDrag(ev){
+  function endDrag(ev?: PointerEvent): void {
     if(!sim.dragging) return;
     sim.endDrag();
     cv.className = "grabbable";
@@ -288,8 +326,8 @@ export function createView(sim, rules, bus){
 
   /* ---------- controls ---------- */
 
-  function bind(id, valId, fmt, apply){
-    var el = document.getElementById(id), out = document.getElementById(valId);
+  function bind(id: string, valId: string, fmt: (v: number, raw: number) => string, apply: (v: number, raw: number) => void): void {
+    var el = need<HTMLInputElement>(id), out = need(valId);
     function upd(){ var v = +el.value/100; out.textContent = fmt(v, +el.value); apply(v, +el.value); }
     el.addEventListener("input", upd);
     upd();
@@ -307,43 +345,43 @@ export function createView(sim, rules, bus){
     function(v){ return (v*1.5).toFixed(2) + " /s"; },
     function(v){ sim.setOption("air", v*1.5); });
 
-  var countEl = document.getElementById("gCount"), countOut = document.getElementById("vCount");
+  var countEl = need<HTMLInputElement>("gCount"), countOut = need("vCount");
   countEl.addEventListener("input", function(){
     countOut.textContent = countEl.value;
     sim.deal(+countEl.value, false);
-    document.getElementById("tBodies").textContent = countEl.value;
+    need("tBodies").textContent = countEl.value;
   });
 
-  document.getElementById("bScatter").addEventListener("click", function(){ sim.scatter(); });
-  document.getElementById("bDeal").addEventListener("click", function(){ sim.deal(+countEl.value, false); });
+  need("bScatter").addEventListener("click", function(){ sim.scatter(); });
+  need("bDeal").addEventListener("click", function(){ sim.deal(+countEl.value, false); });
 
-  if(window.innerWidth < 720) document.getElementById("ctlPanel").open = false;
+  if(window.innerWidth < 720) need<HTMLDetailsElement>("ctlPanel").open = false;
 
   /* the deal did not come from the slider, so put the slider where the
      table actually is */
-  function showCount(n){
-    countEl.value = n;
-    countOut.textContent = n;
+  function showCount(n: number): void {
+    countEl.value = String(n);
+    countOut.textContent = String(n);
   }
 
   /* ---------- telemetry ---------- */
 
-  var tBodies = document.getElementById("tBodies"), tContacts = document.getElementById("tContacts"),
-      tMass = document.getElementById("tMass"), tSpeed = document.getElementById("tSpeed"),
-      tEnergy = document.getElementById("tEnergy"), tImpact = document.getElementById("tImpact");
+  var tBodies = need("tBodies"), tContacts = need("tContacts"),
+      tMass = need("tMass"), tSpeed = need("tSpeed"),
+      tEnergy = need("tEnergy"), tImpact = need("tImpact");
   var tAcc = 0;
 
   /* energies arrive in g·mm²/s². Kinetic energy on this table sits in
      the µJ range and the accumulated impact score climbs past it
      within a minute, so the unit moves rather than the column. */
-  function energy(v){
+  function energy(v: number): string {
     var uj = v/1000;
     if(uj < 1000) return uj.toFixed(1) + " µJ";
     if(uj < 1e6)  return (uj/1000).toFixed(2) + " mJ";
     return (uj/1e6).toFixed(2) + " J";
   }
 
-  function telemetry(dt){
+  function telemetry(dt: number): void {
     tAcc += dt;
     if(tAcc < 0.11) return;
     tAcc = 0;
@@ -355,8 +393,8 @@ export function createView(sim, rules, bus){
       if(sp > peak) peak = sp;
       ke += 0.5*c.m*sp*sp + 0.5*(1/c.invI)*c.w*c.w;
     }
-    tBodies.textContent = cards.length;
-    tContacts.textContent = sim.contactCount;
+    tBodies.textContent = String(cards.length);
+    tContacts.textContent = String(sim.contactCount);
     tMass.textContent = selected ? selected.m.toFixed(1) + " g" : "—";
     tMass.className = selected ? "hot" : "";
     tSpeed.textContent = Math.round(peak) + " mm/s";
@@ -367,7 +405,7 @@ export function createView(sim, rules, bus){
 
   /* ---------- the canvas ---------- */
 
-  function resize(){
+  function resize(): void {
     DPR = Math.min(window.devicePixelRatio || 1, 2);
     W = cv.clientWidth; H = cv.clientHeight;
     cv.width = Math.round(W*DPR);

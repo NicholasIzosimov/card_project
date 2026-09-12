@@ -21,10 +21,42 @@
 
 import { createBus } from "./bus.ts";
 import { createSim } from "./sim.ts";
-import { createRules } from "./rules.js";
-import { createView } from "./view.js";
+import { createRules } from "./rules.ts";
+import { createView } from "./view.ts";
 
-function start(){
+import type { Bus } from "./bus.ts";
+import type { Sim } from "./sim.ts";
+import type { Rules } from "./rules.ts";
+import type { View } from "./view.ts";
+
+/** What survives a hot reload: enough to deal the same size table
+    again, not the table itself. */
+interface Saved { n?: number }
+
+export interface Game {
+  sim: Sim;
+  rules: Rules;
+  view: View;
+  bus: Bus;
+}
+
+/* The host page may provide a hot-reload bridge. It is not ours and it
+   is not always there, so it is declared optional and every use is
+   guarded. */
+declare global {
+  interface Window {
+    claude?: {
+      hot?: {
+        snapshot(fn: () => Saved): void;
+        ready?(fn: (saved: Saved) => void): void;
+        data?: Saved;
+      };
+    };
+    game?: Game;
+  }
+}
+
+function start(): Game {
 
   var bus = createBus();
   var sim = createSim(bus);
@@ -44,7 +76,7 @@ function start(){
 
   var acc = 0, last = performance.now();
 
-  function frame(now){
+  function frame(now: number): void {
     var dt = Math.min(0.05, (now - last)/1000);
     last = now;
     acc += dt;
@@ -62,7 +94,7 @@ function start(){
     requestAnimationFrame(frame);
   }
 
-  function boot(saved){
+  function boot(saved: Saved): void {
     view.resize();
     sim.deal(saved && saved.n ? saved.n : 14, false);
     view.showCount(sim.cards.length);
@@ -74,8 +106,9 @@ function start(){
   }
 
   if(window.claude && window.claude.hot){
-    window.claude.hot.snapshot(function(){ return {n:sim.cards.length}; });
-    window.claude.hot.ready ? window.claude.hot.ready(boot) : boot(window.claude.hot.data || {});
+    var hot = window.claude.hot;
+    hot.snapshot(function(){ return {n:sim.cards.length}; });
+    hot.ready ? hot.ready(boot) : boot(hot.data || {});
   } else {
     boot({});
   }
