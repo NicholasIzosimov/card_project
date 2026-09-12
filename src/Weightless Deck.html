@@ -1,0 +1,696 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Weightless Deck</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600&family=Bodoni+Moda:opsz,wght@6..96,400;6..96,600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  :root{
+    --ground:#EBE7DE;
+    --ground-2:#D6D0C3;
+    --ink:#1B1D28;
+    --ink-soft:#5B6072;
+    --ink-faint:#8C90A0;
+    --panel:rgba(255,255,255,.70);
+    --panel-line:rgba(27,29,40,.16);
+    --panel-line-soft:rgba(27,29,40,.09);
+    --amber:#B9761A;
+    --amber-bright:#D9902B;
+    --face:#FCFAF4;
+    --face-line:rgba(24,26,36,.18);
+    --card-ink:#1A1C26;
+    --carmine:#B0303A;
+    --back-1:#243049;
+    --back-2:#38496B;
+    --shadow:rgba(38,34,26,.34);
+    --aura:217,145,43;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --ground:#15171F;
+      --ground-2:#0A0B11;
+      --ink:#EDEBE5;
+      --ink-soft:#9A9EAD;
+      --ink-faint:#6B7080;
+      --panel:rgba(30,33,45,.64);
+      --panel-line:rgba(255,255,255,.13);
+      --panel-line-soft:rgba(255,255,255,.07);
+      --amber:#E8A33D;
+      --amber-bright:#F5B858;
+      --face:#F6F3EA;
+      --face-line:rgba(24,26,36,.20);
+      --card-ink:#1A1C26;
+      --carmine:#B8333D;
+      --back-1:#1F2A40;
+      --back-2:#334463;
+      --shadow:rgba(0,0,0,.55);
+      --aura:232,163,61;
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#15171F;
+    --ground-2:#0A0B11;
+    --ink:#EDEBE5;
+    --ink-soft:#9A9EAD;
+    --ink-faint:#6B7080;
+    --panel:rgba(30,33,45,.64);
+    --panel-line:rgba(255,255,255,.13);
+    --panel-line-soft:rgba(255,255,255,.07);
+    --amber:#E8A33D;
+    --amber-bright:#F5B858;
+    --face:#F6F3EA;
+    --face-line:rgba(24,26,36,.20);
+    --card-ink:#1A1C26;
+    --carmine:#B8333D;
+    --back-1:#1F2A40;
+    --back-2:#334463;
+    --shadow:rgba(0,0,0,.55);
+    --aura:232,163,61;
+  }
+
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;
+    background:
+      radial-gradient(120% 100% at 50% 38%, var(--ground) 0%, var(--ground) 42%, var(--ground-2) 100%);
+    color:var(--ink);
+    font-family:"Archivo","Helvetica Neue",Arial,sans-serif;
+    overflow:hidden;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  #table{
+    position:fixed; inset:0; width:100%; height:100%;
+    display:block; touch-action:none; cursor:default;
+  }
+  #table.grabbable{cursor:grab}
+  #table.grabbing{cursor:grabbing}
+
+  .chrome{
+    position:fixed; inset:0;
+    display:grid;
+    grid-template-columns:auto 1fr auto;
+    grid-template-rows:auto 1fr auto;
+    padding:clamp(14px,2.1vw,26px);
+    gap:12px;
+    pointer-events:none;
+  }
+  .chrome > *{pointer-events:auto}
+
+  /* ---- masthead ---- */
+  .plate{
+    grid-area:1/1; max-width:min(46vw,320px);
+    filter:drop-shadow(0 0 10px var(--ground)) drop-shadow(0 0 4px var(--ground));
+  }
+  .eyebrow{
+    margin:0; font-size:9.5px; font-weight:600;
+    letter-spacing:.20em; text-transform:uppercase;
+    color:var(--amber);
+  }
+  .plate h1{
+    margin:.24em 0 0;
+    font-family:"Bodoni Moda",Georgia,serif;
+    font-weight:600;
+    font-size:clamp(26px,4.2vw,44px);
+    line-height:.96;
+    letter-spacing:-.005em;
+    text-wrap:balance;
+  }
+  .spec{
+    margin:.7em 0 0; padding-top:.62em;
+    border-top:1px solid var(--panel-line-soft);
+    font-family:"JetBrains Mono",ui-monospace,monospace;
+    font-size:10.5px; line-height:1.55; color:var(--ink-faint);
+    font-variant-numeric:tabular-nums;
+  }
+
+  /* ---- panels ---- */
+  .panel{
+    background:var(--panel);
+    border:1px solid var(--panel-line);
+    border-radius:3px;
+    backdrop-filter:blur(14px) saturate(1.2);
+    -webkit-backdrop-filter:blur(14px) saturate(1.2);
+    padding:13px 14px 14px;
+  }
+  .panel > summary,
+  .panel h2{
+    margin:0 0 11px;
+    font-size:9.5px; font-weight:600;
+    letter-spacing:.18em; text-transform:uppercase;
+    color:var(--ink-soft);
+  }
+  .panel > summary{
+    cursor:pointer; list-style:none;
+    display:flex; align-items:center; justify-content:space-between; gap:16px;
+  }
+  .panel > summary::-webkit-details-marker{display:none}
+  .panel > summary::after{
+    content:"–"; font-family:"JetBrains Mono",monospace;
+    color:var(--ink-faint); font-size:13px; line-height:1;
+  }
+  .panel:not([open]) > summary{margin-bottom:0}
+  .panel:not([open]) > summary::after{content:"+"}
+
+  .controls{grid-area:1/3; width:min(50vw,228px)}
+
+  .ctl{display:grid; gap:5px; margin-bottom:11px}
+  .ctl-top{
+    display:flex; justify-content:space-between; align-items:baseline; gap:10px;
+    font-size:11px; color:var(--ink);
+  }
+  .ctl-top b{font-weight:500}
+  .ctl-top span{
+    font-family:"JetBrains Mono",ui-monospace,monospace;
+    font-size:10.5px; color:var(--ink-faint);
+    font-variant-numeric:tabular-nums;
+  }
+  input[type=range]{
+    -webkit-appearance:none; appearance:none;
+    width:100%; height:16px; margin:0; background:transparent; cursor:pointer;
+  }
+  input[type=range]::-webkit-slider-runnable-track{
+    height:2px; background:var(--panel-line); border-radius:2px;
+  }
+  input[type=range]::-moz-range-track{
+    height:2px; background:var(--panel-line); border-radius:2px;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; appearance:none;
+    width:11px; height:11px; margin-top:-4.5px;
+    border-radius:50%; background:var(--amber); border:none;
+  }
+  input[type=range]::-moz-range-thumb{
+    width:11px; height:11px; border:none; border-radius:50%; background:var(--amber);
+  }
+  input[type=range]:focus-visible{outline:2px solid var(--amber); outline-offset:3px; border-radius:2px}
+
+  .acts{display:flex; gap:7px; margin-top:13px}
+  button{
+    flex:1; font:inherit; font-size:11px; font-weight:500;
+    padding:7px 4px; color:var(--ink);
+    background:transparent;
+    border:1px solid var(--panel-line);
+    border-radius:2px; cursor:pointer;
+    transition:background .14s ease, border-color .14s ease, color .14s ease;
+  }
+  button:hover{border-color:var(--amber); color:var(--amber)}
+  button:active{background:rgba(var(--aura),.14)}
+  button:focus-visible{outline:2px solid var(--amber); outline-offset:2px}
+
+  /* ---- telemetry ---- */
+  .readout{grid-area:3/1; align-self:end; width:min(52vw,206px)}
+  .readout dl{
+    margin:0; display:grid; grid-template-columns:1fr auto; gap:5px 12px;
+    font-family:"JetBrains Mono",ui-monospace,monospace;
+    font-size:10.5px; font-variant-numeric:tabular-nums;
+  }
+  .readout dt{color:var(--ink-faint)}
+  .readout dd{margin:0; text-align:right; color:var(--ink)}
+  .readout dd.hot{color:var(--amber)}
+
+  /* ---- hint ---- */
+  .hint{
+    grid-area:3/3; align-self:end; justify-self:end;
+    margin:0; max-width:min(60vw,290px); text-align:right;
+    font-size:11px; line-height:1.6; color:var(--ink-faint);
+    filter:drop-shadow(0 0 8px var(--ground)) drop-shadow(0 0 3px var(--ground));
+  }
+  .hint kbd{
+    font-family:"JetBrains Mono",ui-monospace,monospace;
+    font-size:10px; color:var(--ink-soft);
+    border-bottom:1px solid var(--panel-line); padding-bottom:1px;
+  }
+
+  @media (max-width:720px){
+    .chrome{grid-template-columns:1fr auto; grid-template-rows:auto 1fr auto}
+    .plate{grid-area:1/1; max-width:60vw}
+    .controls{grid-area:1/2; width:min(62vw,200px)}
+    .readout{grid-area:3/1; width:auto}
+    .readout dl{grid-template-columns:repeat(2,auto 1fr)}
+    .hint{grid-area:3/2}
+  }
+  @media (max-width:520px){
+    .plate h1{font-size:24px}
+    .spec{display:none}
+    .readout{display:none}
+    .hint{grid-area:3/1 / span 1 / span 2; justify-self:start; text-align:left; max-width:100%}
+  }
+
+  @media (prefers-reduced-motion:reduce){
+    button{transition:none}
+  }
+</style>
+
+</head>
+<body>
+<canvas id="table"></canvas>
+
+<div class="chrome">
+  <header class="plate">
+    <p class="eyebrow">Rigid-body sandbox</p>
+    <h1>Weightless Deck</h1>
+    <p class="spec">
+      Poker stock · 63 × 88 mm · 1.8 g<br>
+      SAT manifolds · 8 impulse iterations
+    </p>
+  </header>
+
+  <details class="panel controls" id="ctlPanel" open>
+    <summary>Table</summary>
+
+    <div class="ctl">
+      <label class="ctl-top" for="gGrav"><b>Gravity</b><span id="vGrav">0.00 m/s²</span></label>
+      <input type="range" id="gGrav" min="0" max="100" value="0">
+    </div>
+
+    <div class="ctl">
+      <label class="ctl-top" for="gBounce"><b>Restitution</b><span id="vBounce">0.55</span></label>
+      <input type="range" id="gBounce" min="0" max="95" value="55">
+    </div>
+
+    <div class="ctl">
+      <label class="ctl-top" for="gDrift"><b>Ambient drift</b><span id="vDrift">240 mm/s²</span></label>
+      <input type="range" id="gDrift" min="0" max="100" value="46">
+    </div>
+
+    <div class="ctl">
+      <label class="ctl-top" for="gDrag"><b>Air resistance</b><span id="vDrag">0.42 /s</span></label>
+      <input type="range" id="gDrag" min="0" max="100" value="28">
+    </div>
+
+    <div class="ctl" style="margin-bottom:2px">
+      <label class="ctl-top" for="gCount"><b>Cards dealt</b><span id="vCount">14</span></label>
+      <input type="range" id="gCount" min="4" max="28" value="14">
+    </div>
+
+    <div class="acts">
+      <button type="button" id="bScatter">Scatter</button>
+      <button type="button" id="bDeal">Re-deal</button>
+    </div>
+  </details>
+
+  <section class="panel readout">
+    <h2>Telemetry</h2>
+    <dl>
+      <dt>bodies</dt><dd id="tBodies">14</dd>
+      <dt>contacts</dt><dd id="tContacts">0</dd>
+      <dt>held mass</dt><dd id="tMass">—</dd>
+      <dt>peak speed</dt><dd id="tSpeed">0 mm/s</dd>
+      <dt>kinetic</dt><dd id="tEnergy">0 µJ</dd>
+    </dl>
+  </section>
+
+  <p class="hint">
+    <kbd>Click</kbd> a card to lift it — it grows heavy and won't be knocked aside.
+    <kbd>Drag</kbd> to sweep it through the deck, <kbd>double-click</kbd> to flip,
+    <kbd>click the table</kbd> to let go.
+  </p>
+</div>
+
+<script src="sim.js"></script>
+<script>
+(function(){
+"use strict";
+
+/* The simulation lives in sim.js, loaded above. */
+
+
+/* ---------- canvas + theme ---------- */
+
+reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+var cv = document.getElementById("table");
+var ctx = cv.getContext("2d");
+var W = 0, H = 0, DPR = 1, PPM = 1.4;
+
+var theme = {};
+function readTheme(){
+  var cs = getComputedStyle(document.documentElement);
+  function g(k){ return cs.getPropertyValue(k).trim(); }
+  theme = {
+    face:g("--face"), faceLine:g("--face-line"), cardInk:g("--card-ink"),
+    carmine:g("--carmine"), amber:g("--amber"), amberBright:g("--amber-bright"),
+    back1:g("--back-1"), back2:g("--back-2"), shadow:g("--shadow"),
+    aura:g("--aura") || "232,163,61"
+  };
+}
+readTheme();
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", readTheme);
+new MutationObserver(readTheme).observe(document.documentElement,{attributes:true,attributeFilter:["data-theme"]});
+
+/* seed: ?seed=123 replays a table exactly; otherwise the clock */
+(function(){
+  var q = /[?&]seed=(\d+)/.exec(location.search);
+  setSeed(q ? parseInt(q[1],10) : (Date.now() >>> 0));
+})();
+
+/* ---------- rendering ---------- */
+
+function roundRect(c,x,y,w,h,r){
+  c.beginPath();
+  c.moveTo(x+r,y);
+  c.lineTo(x+w-r,y); c.quadraticCurveTo(x+w,y,x+w,y+r);
+  c.lineTo(x+w,y+h-r); c.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+  c.lineTo(x+r,y+h); c.quadraticCurveTo(x,y+h,x,y+h-r);
+  c.lineTo(x,y+r); c.quadraticCurveTo(x,y,x+r,y);
+  c.closePath();
+}
+
+function drawFace(c, b, w, h){
+  var red = b.suit.red;
+  c.fillStyle = red ? theme.carmine : theme.cardInk;
+
+  /* index corners, in the same didone as the wordmark */
+  var fs = w*0.175;
+  c.font = "600 " + fs.toFixed(1) + 'px "Bodoni Moda", Georgia, serif';
+  c.textAlign = "center"; c.textBaseline = "alphabetic";
+  var ix = -w*0.5 + w*0.155, iy = -h*0.5 + fs*1.18;
+  c.fillText(b.rank, ix, iy);
+  c.font = (fs*0.82).toFixed(1) + 'px Georgia, "Segoe UI Symbol", serif';
+  c.fillText(b.suit.g, ix, iy + fs*0.92);
+
+  c.save();
+  c.rotate(Math.PI);
+  c.font = "600 " + fs.toFixed(1) + 'px "Bodoni Moda", Georgia, serif';
+  c.fillText(b.rank, ix, iy);
+  c.font = (fs*0.82).toFixed(1) + 'px Georgia, "Segoe UI Symbol", serif';
+  c.fillText(b.suit.g, ix, iy + fs*0.92);
+  c.restore();
+
+  /* centre pip */
+  c.globalAlpha = 0.92;
+  c.font = (w*0.56).toFixed(1) + 'px Georgia, "Segoe UI Symbol", serif';
+  c.textBaseline = "middle";
+  c.fillText(b.suit.g, 0, h*0.035);
+  c.globalAlpha = 1;
+}
+
+function drawBack(c, w, h){
+  c.fillStyle = theme.back1;
+  c.fillRect(-w/2, -h/2, w, h);
+  c.save();
+  c.beginPath(); c.rect(-w/2, -h/2, w, h); c.clip();
+  c.strokeStyle = theme.back2;
+  c.lineWidth = Math.max(0.6, w*0.016);
+  var gap = w*0.155;
+  c.beginPath();
+  for(var d = -h; d < w + h; d += gap){
+    c.moveTo(-w/2 + d, -h/2);      c.lineTo(-w/2 + d - h, h/2);
+    c.moveTo(-w/2 + d - h, -h/2);  c.lineTo(-w/2 + d, h/2);
+  }
+  c.stroke();
+  c.restore();
+  c.strokeStyle = theme.face;
+  c.lineWidth = Math.max(1, w*0.035);
+  roundRect(c, -w/2 + w*0.07, -h/2 + w*0.07, w - w*0.14, h - w*0.14, w*0.04);
+  c.stroke();
+}
+
+function drawCard(b){
+  var lift = b.sel + b.hov*0.28;
+  var breathe = reduced ? 0 : 0.011*Math.sin(time*1.35 + b.ph);
+  var vs = (1 + SEL_GROW*b.sel) * (1 + breathe);
+  var flipS = Math.abs(Math.cos(b.flip*Math.PI));
+  var w = CARD_W*PPM, h = CARD_H*PPM, r = w*0.082;
+
+  ctx.save();
+  ctx.translate(b.x*PPM, b.y*PPM);
+  ctx.rotate(b.a);
+  ctx.scale(vs*Math.max(0.03, flipS), vs);
+
+  /* selection aura — the one place the accent is spent */
+  if(b.sel > 0.02){
+    ctx.save();
+    ctx.globalAlpha = b.sel*0.9;
+    ctx.strokeStyle = "rgba(" + theme.aura + ",0.85)";
+    ctx.lineWidth = Math.max(1.2, PPM*1.5);
+    ctx.shadowColor = "rgba(" + theme.aura + ",0.55)";
+    ctx.shadowBlur = 22*DPR*b.sel;
+    roundRect(ctx, -w/2 - PPM*2.4, -h/2 - PPM*2.4, w + PPM*4.8, h + PPM*4.8, r + PPM*2.4);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /* drop shadow: offsets live in device space, so the shadow keeps
+     one light direction no matter how the card is spinning */
+  ctx.shadowColor = theme.shadow;
+  ctx.shadowBlur = (4 + lift*22) * PPM * DPR * 0.75;
+  ctx.shadowOffsetX = (1.2 + lift*5) * PPM * DPR;
+  ctx.shadowOffsetY = (2.6 + lift*11) * PPM * DPR;
+
+  roundRect(ctx, -w/2, -h/2, w, h, r);
+  ctx.fillStyle = theme.face;
+  ctx.fill();
+
+  ctx.shadowColor = "transparent";
+  ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
+
+  ctx.save();
+  roundRect(ctx, -w/2, -h/2, w, h, r);
+  ctx.clip();
+
+  if(b.faceUp) drawFace(ctx, b, w, h);
+  else drawBack(ctx, w, h);
+
+  /* specular: light stays fixed in world space, so the highlight
+     sweeps across the card as it rotates */
+  var la = -b.a;
+  var lx = Math.cos(la)*(-0.55) - Math.sin(la)*(-0.83);
+  var ly = Math.sin(la)*(-0.55) + Math.cos(la)*(-0.83);
+  var gr = ctx.createLinearGradient(lx*w*0.8, ly*h*0.55, -lx*w*0.8, -ly*h*0.55);
+  gr.addColorStop(0, "rgba(255,255,255," + (0.30 + lift*0.28).toFixed(3) + ")");
+  gr.addColorStop(0.48, "rgba(255,255,255,0)");
+  gr.addColorStop(1, "rgba(20,22,32,0.075)");
+  ctx.fillStyle = gr;
+  ctx.fillRect(-w/2, -h/2, w, h);
+
+  if(b.glow > 0.01){
+    ctx.fillStyle = "rgba(" + theme.aura + "," + (b.glow*0.22).toFixed(3) + ")";
+    ctx.fillRect(-w/2, -h/2, w, h);
+  }
+  ctx.restore();
+
+  ctx.strokeStyle = theme.faceLine;
+  ctx.lineWidth = 1;
+  roundRect(ctx, -w/2 + 0.5, -h/2 + 0.5, w - 1, h - 1, r);
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+function render(){
+  ctx.clearRect(0,0,W,H);
+
+  for(var i=0;i<sparks.length;i++){
+    var s = sparks[i];
+    var k = s.t/s.life;
+    ctx.beginPath();
+    ctx.arc(s.x*PPM, s.y*PPM, (s.r*k + 1.5)*PPM, 0, Math.PI*2);
+    ctx.strokeStyle = "rgba(" + theme.aura + "," + ((1-k)*0.5).toFixed(3) + ")";
+    ctx.lineWidth = Math.max(0.8, (1-k)*2.2*PPM);
+    ctx.stroke();
+  }
+
+  var order = cards.slice().sort(function(a,b){
+    return (a.sel + a.hov*0.3) - (b.sel + b.hov*0.3);
+  });
+  for(var j=0;j<order.length;j++) drawCard(order[j]);
+}
+
+/* ---------- input ---------- */
+
+function toMM(ev){
+  var r = cv.getBoundingClientRect();
+  return {x:(ev.clientX - r.left)/PPM, y:(ev.clientY - r.top)/PPM};
+}
+function inside(b, p){
+  var dx = p.x-b.x, dy = p.y-b.y;
+  var c = Math.cos(-b.a), s = Math.sin(-b.a);
+  var lx = c*dx - s*dy, ly = s*dx + c*dy;
+  return Math.abs(lx) <= b.hw && Math.abs(ly) <= b.hh;
+}
+function pick(p){
+  if(selected && inside(selected, p)) return selected;
+  for(var i=cards.length-1;i>=0;i--) if(inside(cards[i], p)) return cards[i];
+  return null;
+}
+
+cv.addEventListener("pointerdown", function(ev){
+  var p = toMM(ev);
+  var hit = pick(p);
+  if(!hit){ selected = null; drag.body = null; drag.active = false; cv.className = ""; return; }
+  selected = hit;
+  var c = Math.cos(-hit.a), s = Math.sin(-hit.a);
+  var dx = p.x-hit.x, dy = p.y-hit.y;
+  drag.body = hit;
+  drag.lx = c*dx - s*dy;
+  drag.ly = s*dx + c*dy;
+  drag.tx = p.x; drag.ty = p.y;
+  drag.active = true;
+  cv.className = "grabbing";
+  cv.setPointerCapture(ev.pointerId);
+});
+
+cv.addEventListener("pointermove", function(ev){
+  var p = toMM(ev);
+  if(drag.active){ drag.tx = p.x; drag.ty = p.y; return; }
+  var hit = pick(p);
+  for(var i=0;i<cards.length;i++) cards[i].hovering = (cards[i] === hit);
+  cv.className = hit ? "grabbable" : "";
+});
+
+function endDrag(ev){
+  if(!drag.active) return;
+  drag.active = false;
+  drag.body = null;
+  cv.className = "grabbable";
+  if(ev && cv.hasPointerCapture && cv.hasPointerCapture(ev.pointerId)) cv.releasePointerCapture(ev.pointerId);
+}
+cv.addEventListener("pointerup", endDrag);
+cv.addEventListener("pointercancel", endDrag);
+cv.addEventListener("pointerleave", function(){
+  if(!drag.active){ for(var i=0;i<cards.length;i++) cards[i].hovering = false; }
+});
+
+cv.addEventListener("dblclick", function(ev){
+  var hit = pick(toMM(ev));
+  if(hit && !hit.flipping){ hit.flipping = 1; hit.flip = 0; }
+});
+
+cv.addEventListener("contextmenu", function(ev){ ev.preventDefault(); });
+
+window.addEventListener("keydown", function(ev){
+  if(ev.target !== document.body) return;
+  var k = ev.key.toLowerCase();
+  if(k === "s"){ scatter(); }
+  else if(k === "r"){ deal(cards.length, false); }
+  else if(k === "escape"){ selected = null; drag.body = null; drag.active = false; }
+  else return;
+  ev.preventDefault();
+});
+
+/* ---------- controls ---------- */
+
+function bind(id, valId, fmt, apply){
+  var el = document.getElementById(id), out = document.getElementById(valId);
+  function upd(){ var v = +el.value/100; out.textContent = fmt(v, +el.value); apply(v, +el.value); }
+  el.addEventListener("input", upd);
+  upd();
+}
+bind("gGrav","vGrav",
+  function(v){ return (v*9.81).toFixed(2) + " m/s²"; },
+  function(v){ opts.grav = v*9810; });
+bind("gBounce","vBounce",
+  function(v){ return v.toFixed(2); },
+  function(v){ opts.rest = v; });
+bind("gDrift","vDrift",
+  function(v){ return Math.round(v*520) + " mm/s²"; },
+  function(v){ opts.drift = v*520; });
+bind("gDrag","vDrag",
+  function(v){ return (v*1.5).toFixed(2) + " /s"; },
+  function(v){ opts.air = v*1.5; });
+
+var countEl = document.getElementById("gCount"), countOut = document.getElementById("vCount");
+countEl.addEventListener("input", function(){
+  countOut.textContent = countEl.value;
+  deal(+countEl.value, false);
+  document.getElementById("tBodies").textContent = countEl.value;
+});
+
+document.getElementById("bScatter").addEventListener("click", scatter);
+document.getElementById("bDeal").addEventListener("click", function(){ deal(+countEl.value, false); });
+
+if(window.innerWidth < 720) document.getElementById("ctlPanel").open = false;
+
+/* ---------- telemetry ---------- */
+
+var tBodies = document.getElementById("tBodies"), tContacts = document.getElementById("tContacts"),
+    tMass = document.getElementById("tMass"), tSpeed = document.getElementById("tSpeed"),
+    tEnergy = document.getElementById("tEnergy");
+var tAcc = 0;
+
+function telemetry(dt){
+  tAcc += dt;
+  if(tAcc < 0.11) return;
+  tAcc = 0;
+  var peak = 0, ke = 0;
+  for(var i=0;i<cards.length;i++){
+    var c = cards[i];
+    var sp = Math.hypot(c.vx, c.vy);
+    if(sp > peak) peak = sp;
+    ke += 0.5*c.m*sp*sp + 0.5*(1/c.invI)*c.w*c.w;
+  }
+  tBodies.textContent = cards.length;
+  tContacts.textContent = contactCount;
+  tMass.textContent = selected ? selected.m.toFixed(1) + " g" : "—";
+  tMass.className = selected ? "hot" : "";
+  tSpeed.textContent = Math.round(peak) + " mm/s";
+  tEnergy.textContent = (ke/1000).toFixed(1) + " µJ";
+}
+
+/* ---------- loop ---------- */
+
+function resize(){
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = cv.clientWidth; H = cv.clientHeight;
+  cv.width = Math.round(W*DPR);
+  cv.height = Math.round(H*DPR);
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  PPM = clamp(Math.min(W,H)/640, 0.72, 2.2);
+  BW = W/PPM; BH = H/PPM;
+  for(var i=0;i<cards.length;i++){
+    var r = Math.hypot(cards[i].hw, cards[i].hh);
+    cards[i].x = clamp(cards[i].x, r, Math.max(r, BW-r));
+    cards[i].y = clamp(cards[i].y, r, Math.max(r, BH-r));
+  }
+}
+window.addEventListener("resize", resize);
+
+var acc = 0, last = performance.now();
+function frame(now){
+  var dt = Math.min(0.05, (now - last)/1000);
+  last = now;
+  acc += dt;
+  contactCount = 0;
+  var steps = 0;
+  while(acc >= DT && steps < MAX_STEPS){ step(DT); acc -= DT; steps++; }
+  if(steps === MAX_STEPS) acc = 0;
+  render();
+  telemetry(dt);
+  requestAnimationFrame(frame);
+}
+
+function boot(saved){
+  resize();
+  deal(saved && saved.n ? saved.n : 14, false);
+  countEl.value = cards.length;
+  countOut.textContent = cards.length;
+  /* open on a live table: one card already lifted, mid-drift */
+  selected = cards[(cards.length/2)|0];
+  selected.sel = 1;
+  for(var i=0;i<cards.length;i++){
+    cards[i].vx = (rnd()-0.5)*260;
+    cards[i].vy = (rnd()-0.5)*260;
+    cards[i].w  = (rnd()-0.5)*1.6;
+  }
+  for(var s=0;s<40;s++) step(DT);
+  requestAnimationFrame(frame);
+}
+
+if(window.claude && window.claude.hot){
+  window.claude.hot.snapshot(function(){ return {n:cards.length}; });
+  window.claude.hot.ready ? window.claude.hot.ready(boot) : boot(window.claude.hot.data || {});
+} else {
+  boot({});
+}
+
+})();
+</script>
+</body>
+</html>

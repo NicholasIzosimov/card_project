@@ -10,7 +10,7 @@ move. Treat that as the thing being protected by everything below.
 
 ## Run it
 
-Open `html version/Weightless Deck.html`. No server, no build step. `sim.js`
+Open `src/Weightless Deck.html`. No server, no build step. `sim.js`
 must sit next to it. `?seed=12345` replays a table exactly.
 
 ```
@@ -24,9 +24,9 @@ npm run build         # regenerate deck.body.html
 
 | file | what it is |
 |---|---|
-| `html version/sim.js` | the solver. DOM-free, headless-testable. **Source of truth.** |
-| `html version/Weightless Deck.html` | the page: styles, markup, render + input + UI |
-| `html version/deck.body.html` | **generated** — never edit by hand |
+| `src/sim.js` | the solver. DOM-free, headless-testable. **Source of truth.** |
+| `src/Weightless Deck.html` | the page: styles, markup, render + input + UI |
+| `src/deck.body.html` | **generated** — never edit by hand |
 | `tools/build-body.mjs` | generates the above; `--check` fails if stale |
 | `test/physics.mjs` | solver regression |
 | `test/smoke.mjs` | page boots and renders |
@@ -125,15 +125,16 @@ to a card.**
 
 ## Layout note
 
-The JS game lives in `html version/`; `test/`, `tools/` and `package.json`
-stay at the root and reach into it. The TypeScript port will get its own
-sibling folder.
+The live game is `src/`; `test/`, `tools/` and `package.json` stay at the
+root and reach into it. The TypeScript port will get its own sibling folder.
 
-**When the TS port works, it replaces this one.** Two live copies of the
-physics is the divergence hazard step 1 existed to remove, and only
-`html version/sim.js` is covered by the test suite. Keep this folder as a
-frozen reference, not a second thing to maintain — the old version lives in
-git history either way.
+`html version/` is a **frozen reference** — the single-file version as it
+stood before the sim/rules/view split. Nothing reads it, no test covers it,
+and it should not be edited. It is there to diff against, and git history
+holds it either way.
+
+**When the TS port works, it replaces `src/`.** Two live copies of the
+physics is the divergence hazard step 1 existed to remove.
 
 ## Roadmap
 
