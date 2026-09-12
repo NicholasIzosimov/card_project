@@ -1,7 +1,7 @@
 /* Weightless Deck — physics regression test
    ------------------------------------------------------------------
-   Extracts the @sim-start/@sim-end region straight out of the game
-   file and runs it headless. No build step, no dependencies.
+   Imports the sim and runs it headless — no DOM, no canvas, no build
+   step in front of it. Node strips the types and runs the module.
 
      node test/physics.mjs            run the suite
      node test/physics.mjs --update   re-record the golden values
@@ -22,12 +22,21 @@ import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
+import { createBus } from "../src/bus.js";
+import { createSim } from "../src/sim.js";
+
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SIM = join(HERE, "..", "src", "sim.js");
 const GOLDEN = join(HERE, "golden.json");
 const UPDATE = process.argv.includes("--update");
 
-/* ---------- load the sim ---------- */
+/* ---------- load the sim ----------
+   The sim is imported like any other module — node strips the types
+   and runs it. It is still read as text as well, for one reason: an
+   import proves the sim runs headless today, but only a look at the
+   source proves it cannot stop being headless tomorrow. A `document.`
+   guarded behind a branch this suite never takes would import
+   perfectly happily. */
 
 function loadSim() {
   const src = readFileSync(SIM, "utf8");
@@ -38,11 +47,9 @@ function loadSim() {
     }
   }
 
-  /* sim.js is a classic script that defines exactly one name.
-     Evaluate it, then build a fresh isolated table: each scenario gets
-     its own cards, its own RNG stream and its own clock, so nothing
-     leaks from one run into the next. */
-  return new Function(src + "\nreturn createSim();")();
+  /* a fresh isolated table per scenario: its own cards, its own RNG
+     stream, its own clock, so nothing leaks from one run to the next */
+  return createSim(createBus());
 }
 
 /* ---------- state capture ---------- */

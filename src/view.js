@@ -16,9 +16,8 @@
    frame and doesn't follow a card, canvas for anything attached to
    one. */
 
-"use strict";
 
-function createView(sim, rules, bus){
+export function createView(sim, rules, bus){
 
   function clamp(v,a,b){ return v<a?a:(v>b?b:v); }
 

@@ -15,9 +15,8 @@
    works rather than something that is planned: the energy the table
    spends on contacts accumulates into a score. */
 
-"use strict";
 
-function createRules(sim, bus){
+export function createRules(sim, bus){
 
   /* accumulated collision energy, g·mm²/s² — the same unit the
      telemetry panel already prints kinetic energy in, so the two

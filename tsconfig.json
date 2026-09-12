@@ -1,0 +1,37 @@
+{
+  /* Vite (esbuild) and node --strip-types both do the same thing to this
+     code: delete the types and run what is left. Neither of them
+     type-checks, so `npm run typecheck` is the only thing that does —
+     it is part of `npm test` for that reason.
+
+     Because both strippers only delete, the source has to be erasable:
+     no enums, no namespaces, no parameter properties. erasableSyntaxOnly
+     makes tsc reject those at the point they are written rather than at
+     the point node refuses to run them. */
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "types": [],
+
+    "strict": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+
+    /* imports name the file that is actually on disk — "./sim.ts", not
+       "./sim.js" — because node's type stripping resolves the specifier
+       literally and does not rewrite extensions. Vite and tsc both
+       follow along. */
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": true,
+    "skipLibCheck": true
+  },
+  "include": ["src", "vite.config.ts"]
+}

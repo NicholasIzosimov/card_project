@@ -5,11 +5,17 @@
    agree about the interfaces between them, whether boot() throws,
    whether the render and input paths run.
 
-   This loads every script the page loads, against a stub DOM, boots
-   the game and drives real animation frames. It is a wiring check,
-   not a visual one: it catches "the layers drifted apart", which is
-   the failure the physics test structurally cannot see — and which
-   got more likely, not less, the moment there were four of them.
+   This stands a stub DOM up on globalThis, imports the page's entry
+   module, and drives real animation frames. It is a wiring check, not
+   a visual one: it catches "the layers drifted apart", which is the
+   failure the physics test structurally cannot see — and which got
+   more likely, not less, the moment there were five files.
+
+   The stubs go on globalThis rather than being passed in as
+   parameters, because that is the only place a module can find them:
+   view.ts reads `document` and `window` while it is being imported,
+   so the import has to be dynamic and has to happen after this file
+   has finished lying about the browser.
 
      node test/smoke.mjs
 */
@@ -72,6 +78,7 @@ const el = (id) => {
 };
 
 const frames = [];
+
 const win = {
   devicePixelRatio: 2,
   innerWidth: 1200,
@@ -81,10 +88,7 @@ const win = {
   requestAnimationFrame: (fn) => { frames.push(fn); return frames.length; },
   cancelAnimationFrame() {},
   location: { search: "?seed=4242" },
-  MutationObserver: class { observe() {} disconnect() {} },
-  getComputedStyle: () => ({ getPropertyValue: (k) => CSS_VARS[k] ?? "" }),
-  performance: { now: () => frames.length * 16.67 },
-  localStorage: { getItem: () => null, setItem() {}, removeItem() {} }
+  getComputedStyle: () => ({ getPropertyValue: (k) => CSS_VARS[k] ?? "" })
 };
 win.window = win;
 
@@ -97,19 +101,26 @@ const doc = {
   querySelector: () => null
 };
 
-/* ---------- load the page the way the browser would ---------- */
-
-const html = readFileSync(join(ROOT, "Weightless Deck.html"), "utf8");
-
-/* Load exactly what the page loads, in the order the page loads it.
-   Reading the tags rather than naming the files is what stops this
-   test passing against a set of scripts the browser would never
-   assemble that way. */
-const tags = [...html.matchAll(/<script\s+src=["']([^"']+)["']\s*>/g)].map((m) => m[1]);
-const inline = /<script>([\s\S]*?)<\/script>/.exec(html);
-const pageSrc =
-  tags.map((f) => readFileSync(join(ROOT, f), "utf8")).join("\n;\n") +
-  (inline ? "\n;\n" + inline[1] : "");
+/* Install the browser the modules expect. `performance` already exists
+   in node and is not writable by assignment, so it goes in by
+   definition — the game reads performance.now() while it is being
+   imported, and a clock that counts frames keeps the run repeatable. */
+Object.assign(globalThis, {
+  window: win,
+  document: doc,
+  getComputedStyle: win.getComputedStyle,
+  matchMedia: win.matchMedia,
+  MutationObserver: class { observe() {} disconnect() {} },
+  requestAnimationFrame: win.requestAnimationFrame,
+  cancelAnimationFrame: win.cancelAnimationFrame,
+  devicePixelRatio: win.devicePixelRatio,
+  location: win.location,
+  localStorage: { getItem: () => null, setItem() {}, removeItem() {} }
+});
+Object.defineProperty(globalThis, "performance", {
+  value: { now: () => frames.length * 16.67 },
+  configurable: true, writable: true
+});
 
 let failures = 0;
 const pass = (m) => console.log("  \x1b[32mPASS\x1b[0m  " + m);
@@ -117,33 +128,22 @@ const fail = (m) => { console.log("  \x1b[31mFAIL\x1b[0m  " + m); failures++; };
 
 console.log("\nWeightless Deck — boot smoke test\n");
 
-/* the layers only mean anything if the page actually loads all of
-   them, in an order where each one's dependencies already exist */
-const WANT = ["bus.js", "sim.js", "rules.js", "view.js", "main.js"];
-const missing = WANT.filter((f) => !tags.includes(f));
-if (missing.length) {
-  fail(`the page does not load ${missing.join(", ")} — it will not run in a browser`);
-} else if (WANT.some((f, i) => tags.indexOf(f) !== i)) {
-  fail(`the page loads its scripts out of order: ${tags.join(", ")}`);
-} else {
-  pass(`the page loads ${tags.join(", ")}`);
-}
+/* This file imports the entry module itself, so it would happily pass
+   against a page that had stopped loading it. Check the tag. */
+const html = readFileSync(join(ROOT, "index.html"), "utf8");
+const entry = /<script\s+type=["']module["']\s+src=["']\.\/main\.(t|j)s["']\s*>/.exec(html);
+entry
+  ? pass(`the page loads ./main.${entry[1]}s as a module`)
+  : fail("the page has no <script type=\"module\" src=\"./main.ts\"> — it will not run in a browser");
+
+/* ---------- boot ---------- */
 
 let game;
 try {
-  // classic scripts sharing one scope, exactly as in the page
-  const load = new Function(
-    "window","document","getComputedStyle","matchMedia","MutationObserver",
-    "requestAnimationFrame","cancelAnimationFrame","devicePixelRatio",
-    "performance","localStorage","location",
-    pageSrc + "\nreturn game;"
-  );
-  game = load(
-    win, doc, win.getComputedStyle, win.matchMedia, win.MutationObserver,
-    win.requestAnimationFrame, win.cancelAnimationFrame, win.devicePixelRatio,
-    win.performance, win.localStorage, win.location
-  );
-  pass("every script loads and the game boots without throwing");
+  /* dynamic, and after the stubs above: a static import would be
+     hoisted above them and the modules would find no document */
+  ({ game } = await import("../src/main.js"));
+  pass("the entry module imports and the game boots without throwing");
 } catch (e) {
   fail("boot threw: " + e.message);
   console.log("\n" + e.stack.split("\n").slice(0, 6).join("\n") + "\n");

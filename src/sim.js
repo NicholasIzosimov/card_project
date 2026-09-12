@@ -25,7 +25,6 @@
    canvas, no Math.random. test/physics.mjs runs it headless in node
    and will fail loudly if that stops being true. */
 
-"use strict";
 
 /* ============================================================
    Weightless Deck — 2D rigid-body sandbox
@@ -39,7 +38,7 @@
    node (test/physics.mjs extracts exactly this region). Keep it that
    way: no document, no window, no canvas, no Math.random. */
 
-function createSim(bus){
+export function createSim(bus){
 
   /* headless callers (test/physics.mjs) run without a bus */
   bus = bus || { emit:function(){} };

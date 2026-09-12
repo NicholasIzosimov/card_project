@@ -15,9 +15,8 @@
    emitted, so listeners stay short and never call back into the sim
    mid-solve. */
 
-"use strict";
 
-function createBus(){
+export function createBus(){
 
   var subs = Object.create(null);
 
