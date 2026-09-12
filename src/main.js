@@ -18,13 +18,14 @@
 var game = (function(){
 "use strict";
 
-var sim = createSim();
+var bus = createBus();
+var sim = createSim(bus);
 
 /* seed: ?seed=123 replays a table exactly; otherwise the clock */
 var q = /[?&]seed=(\d+)/.exec(location.search);
 sim.setSeed(q ? parseInt(q[1],10) : (Date.now() >>> 0));
 
-var view = createView(sim);
+var view = createView(sim, bus);
 
 /* ---------- the clock ----------
    Fixed DT with an accumulator: the solver only ever sees the
@@ -42,6 +43,7 @@ function frame(now){
   var steps = 0;
   while(acc >= sim.DT && steps < sim.MAX_STEPS){
     sim.step(sim.DT);
+    view.advance(sim.DT);
     acc -= sim.DT;
     steps++;
   }
@@ -58,7 +60,7 @@ function boot(saved){
   /* open on a live table: one card already lifted, mid-drift */
   sim.select(sim.cards[(sim.cards.length/2)|0], true);
   sim.stir(260, 1.6);
-  for(var s=0;s<40;s++) sim.step(sim.DT);
+  for(var s=0;s<40;s++){ sim.step(sim.DT); view.advance(sim.DT); }
   requestAnimationFrame(frame);
 }
 
@@ -69,6 +71,6 @@ if(window.claude && window.claude.hot){
   boot({});
 }
 
-return { sim:sim, view:view };
+return { sim:sim, view:view, bus:bus };
 
 })();

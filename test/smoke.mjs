@@ -118,7 +118,7 @@ console.log("\nWeightless Deck — boot smoke test\n");
 
 /* the layers only mean anything if the page actually loads all of
    them, in an order where each one's dependencies already exist */
-const WANT = ["sim.js", "view.js", "main.js"];
+const WANT = ["bus.js", "sim.js", "view.js", "main.js"];
 const missing = WANT.filter((f) => !tags.includes(f));
 if (missing.length) {
   fail(`the page does not load ${missing.join(", ")} — it will not run in a browser`);

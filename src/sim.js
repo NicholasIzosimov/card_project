@@ -13,8 +13,13 @@
    The returned object is the whole interface. Nothing outside this
    file reaches into sim state: reads go through the getters, writes
    go through the intents at the bottom. The view renders from it and
-   never mutates it; the rules layer asks it for things and is told
-   what happened.
+   never mutates it; the rules layer asks it for things.
+
+   What comes back out goes through the bus, not through return
+   values: createSim(bus) reports contacts and deals as events, and
+   has no idea who is listening. Nothing visual lives in here — if a
+   thing does not change where a card ends up, it belongs to whoever
+   subscribed.
 
    This file is DOM-free on purpose — no document, no window, no
    canvas, no Math.random. test/physics.mjs runs it headless in node
@@ -34,7 +39,10 @@
    node (test/physics.mjs extracts exactly this region). Keep it that
    way: no document, no window, no canvas, no Math.random. */
 
-function createSim(){
+function createSim(bus){
+
+  /* headless callers (test/physics.mjs) run without a bus */
+  bus = bus || { emit:function(){} };
 
   var CARD_W = 63, CARD_H = 88, CARD_M = 1.8;
   var DT = 1/120, MAX_STEPS = 4, ITER = 8;
@@ -44,7 +52,47 @@ function createSim(){
   var SPRING_K = 900, SPRING_C = 62;
 
   var BW = 500, BH = 400;   /* table extents, mm */
-  var reduced = false;      /* set from prefers-reduced-motion at boot */
+
+  /* ---------- contact reporting ----------
+     Two disciplines here, and both matter.
+
+     One: the solver visits every contact ITER times per tick. Only
+     iteration 0 reports, or every listener hears each contact eight
+     times — the same gate the spark effect has always used.
+
+     Two: contacts are written into a flat preallocated buffer, not
+     emitted where they are found. Emitting inside the solver would
+     mean an event object per contact in the hottest loop in the
+     game. The buffer is drained once, at the end of the tick.
+
+     The sim reports every contact it actually resolves and takes no
+     view on which ones are interesting. Whether a contact is worth a
+     spark, a sound or a point is the subscriber's business. */
+
+  var CONTACT_CARD = 0, CONTACT_WALL = 1;
+  var EV_STRIDE = 4;                   /* kind, x, y, impulse */
+  var evBuf = new Float64Array(512 * EV_STRIDE);
+  var evCount = 0;
+
+  function reportContact(kind, x, y, j){
+    var o = evCount * EV_STRIDE;
+    if(o + EV_STRIDE > evBuf.length){
+      /* grows once and stays grown, so the hot path never allocates */
+      var bigger = new Float64Array(evBuf.length * 2);
+      bigger.set(evBuf);
+      evBuf = bigger;
+    }
+    evBuf[o] = kind; evBuf[o+1] = x; evBuf[o+2] = y; evBuf[o+3] = j;
+    evCount++;
+  }
+
+  function flushContacts(){
+    for(var i=0;i<evCount;i++){
+      var o = i * EV_STRIDE;
+      bus.emit("contact", evBuf[o+1], evBuf[o+2], evBuf[o+3], evBuf[o]);
+    }
+    evCount = 0;
+  }
 
   /* ---------- deterministic RNG ----------
      Every stochastic value in the sim comes from here, so a given seed
@@ -169,7 +217,6 @@ function createSim(){
   ];
 
   var cards = [];
-  var sparks = [];
   var time = 0;
 
   function setMass(b){
@@ -223,7 +270,7 @@ function createSim(){
     }
     selected = null;
     drag.body = null;
-    sparks.length = 0;
+    bus.emit("deal", cards.length);
   }
 
   function scatter(){
@@ -270,7 +317,7 @@ function createSim(){
         var km = b.invM + rn*rn*b.invI;
         var j = -(1 + WALL_E) * vn / (km * cn);
         applyImpulse(b, j*nx, j*ny, rx, ry);
-        if(j > 24 && iterScale === 0) spark(hits[h].x, hits[h].y, j);
+        if(iterScale === 0) reportContact(CONTACT_WALL, hits[h].x, hits[h].y, j);
 
         var tx = -ny, ty = nx;
         rvx = b.vx - b.w*ry; rvy = b.vy + b.w*rx;
@@ -308,10 +355,16 @@ function createSim(){
       applyImpulse(A, -j*nx, -j*ny, rax, ray);
       applyImpulse(B,  j*nx,  j*ny, rbx, rby);
 
-      if(first && j > 30){
-        spark(p.x, p.y, j);
-        A.glow = Math.min(1, A.glow + j/420);
-        B.glow = Math.min(1, B.glow + j/420);
+      if(first){
+        reportContact(CONTACT_CARD, p.x, p.y, j);
+        /* glow stays here, unlike the spark: it is body state, it
+           rides on the card, step() decays it and the renderer only
+           reads it. 30 is the impulse at which a knock is worth
+           seeing — it was the spark's threshold too. */
+        if(j > 30){
+          A.glow = Math.min(1, A.glow + j/420);
+          B.glow = Math.min(1, B.glow + j/420);
+        }
       }
 
       var tx = -ny, ty = nx;
@@ -454,18 +507,11 @@ function createSim(){
       }
     }
 
-    /* sparks */
-    for(i=sparks.length-1;i>=0;i--){
-      var s = sparks[i];
-      s.t += dt;
-      if(s.t > s.life) sparks.splice(i,1);
-    }
     time += dt;
-  }
 
-  function spark(x,y,j){
-    if(sparks.length > 40 || reduced) return;
-    sparks.push({x:x, y:y, t:0, life:0.42, r:Math.min(26, 5 + j*0.07)});
+    /* the tick is over and the bodies have settled — now tell anyone
+       who is listening what happened during it */
+    flushContacts();
   }
 
   /* ---------- intents ----------
@@ -487,10 +533,6 @@ function createSim(){
   }
 
   function setOption(k, v){ opts[k] = v; }
-
-  /* prefers-reduced-motion is read from the page and handed down; the
-     sim has no window to ask */
-  function setReducedMotion(v){ reduced = !!v; }
 
   function select(b, snap){
     selected = b || null;
@@ -570,10 +612,12 @@ function createSim(){
     DT: DT, MAX_STEPS: MAX_STEPS,
     CARD_W: CARD_W, CARD_H: CARD_H, SEL_GROW: SEL_GROW,
 
+    /* which kind of contact a "contact" event was */
+    CONTACT_CARD: CONTACT_CARD, CONTACT_WALL: CONTACT_WALL,
+
     /* state — read-only by contract. getters, not fields, so a reader
        cannot assign to them by accident. */
     cards: cards,
-    sparks: sparks,
     get time(){ return time; },
     get contactCount(){ return contactCount; },
     get selected(){ return selected; },
@@ -586,7 +630,6 @@ function createSim(){
     rnd: rnd,
     setBounds: setBounds,
     setOption: setOption,
-    setReducedMotion: setReducedMotion,
 
     /* intents */
     deal: deal,

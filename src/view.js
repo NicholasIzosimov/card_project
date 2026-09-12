@@ -18,14 +18,13 @@
 
 "use strict";
 
-function createView(sim){
+function createView(sim, bus){
 
   function clamp(v,a,b){ return v<a?a:(v>b?b:v); }
 
   /* ---------- canvas + theme ---------- */
 
   var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  sim.setReducedMotion(reduced);
 
   var cv = document.getElementById("table");
   var ctx = cv.getContext("2d");
@@ -45,6 +44,39 @@ function createView(sim){
   readTheme();
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", readTheme);
   new MutationObserver(readTheme).observe(document.documentElement,{attributes:true,attributeFilter:["data-theme"]});
+
+  /* ---------- effects ----------
+     A spark is a ring that blooms where two things hit each other.
+     No card has ever felt one, which is exactly why it lives here and
+     not in the sim: it subscribes to the same "contact" event that
+     score and, later, sound will.
+
+     The sim reports every contact it resolves. These are the impulses
+     above which a knock reads as a knock — a wall bounce shows a
+     little sooner than a card-on-card one, because the card is
+     rebounding off something that cannot move. */
+
+  var SPARK_CARD = 30, SPARK_WALL = 24, SPARK_MAX = 40;
+  var sparks = [];
+
+  bus.on("contact", function(x, y, j, kind){
+    if(j <= (kind === sim.CONTACT_WALL ? SPARK_WALL : SPARK_CARD)) return;
+    if(sparks.length > SPARK_MAX || reduced) return;
+    sparks.push({x:x, y:y, t:0, life:0.42, r:Math.min(26, 5 + j*0.07)});
+  });
+
+  /* a fresh table has nothing still ringing on it */
+  bus.on("deal", function(){ sparks.length = 0; });
+
+  /* effects age on the sim's clock, not the display's — one call per
+     tick, so a slow frame does not eat a spark */
+  function advance(dt){
+    for(var i=sparks.length-1;i>=0;i--){
+      var s = sparks[i];
+      s.t += dt;
+      if(s.t > s.life) sparks.splice(i,1);
+    }
+  }
 
   /* ---------- rendering ---------- */
 
@@ -183,7 +215,6 @@ function createView(sim){
   function render(){
     ctx.clearRect(0,0,W,H);
 
-    var sparks = sim.sparks;
     for(var i=0;i<sparks.length;i++){
       var s = sparks[i];
       var k = s.t/s.life;
@@ -341,6 +372,7 @@ function createView(sim){
   return {
     resize: resize,
     render: render,
+    advance: advance,
     telemetry: telemetry,
     showCount: showCount
   };
