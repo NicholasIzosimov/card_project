@@ -98,9 +98,17 @@ const doc = {
 
 /* ---------- load sim.js, then the page script, as the browser would ---------- */
 
-const simSrc = readFileSync(join(ROOT, "sim.js"), "utf8");
 const html = readFileSync(join(ROOT, "Weightless Deck.html"), "utf8");
-const pageSrc = /<script>([\s\S]*?)<\/script>/.exec(html)[1];
+
+/* Load exactly what the page loads, in the order the page loads it.
+   Reading the tags rather than naming the files is what stops this
+   test passing against a set of scripts the browser would never
+   assemble that way. */
+const tags = [...html.matchAll(/<script\s+src=["']([^"']+)["']\s*>/g)].map((m) => m[1]);
+const inline = /<script>([\s\S]*?)<\/script>/.exec(html);
+const pageSrc =
+  tags.map((f) => readFileSync(join(ROOT, f), "utf8")).join("\n;\n") +
+  (inline ? "\n;\n" + inline[1] : "");
 
 let failures = 0;
 const pass = (m) => console.log("  \x1b[32mPASS\x1b[0m  " + m);
@@ -108,23 +116,26 @@ const fail = (m) => { console.log("  \x1b[31mFAIL\x1b[0m  " + m); failures++; };
 
 console.log("\nWeightless Deck — boot smoke test\n");
 
-/* this file concatenates the two scripts itself, so it would happily
-   pass even if the page had stopped loading sim.js. check the tag. */
-if (/<script\s+src=["']sim\.js["']\s*>/.test(html)) {
-  pass("the page loads sim.js");
+/* the layers only mean anything if the page actually loads all of
+   them, in an order where each one's dependencies already exist */
+const WANT = ["sim.js", "view.js", "main.js"];
+const missing = WANT.filter((f) => !tags.includes(f));
+if (missing.length) {
+  fail(`the page does not load ${missing.join(", ")} — it will not run in a browser`);
+} else if (WANT.some((f, i) => tags.indexOf(f) !== i)) {
+  fail(`the page loads its scripts out of order: ${tags.join(", ")}`);
 } else {
-  fail("the page has no <script src=\"sim.js\"> tag — it will not run in a browser");
+  pass(`the page loads ${tags.join(", ")}`);
 }
 
 let game;
 try {
-  // both scripts are classic scripts sharing one scope, as in the page
+  // classic scripts sharing one scope, exactly as in the page
   const load = new Function(
     "window","document","getComputedStyle","matchMedia","MutationObserver",
     "requestAnimationFrame","cancelAnimationFrame","devicePixelRatio",
     "performance","localStorage","location",
-    simSrc + "\n;\n" + pageSrc +
-    "\nreturn game;"
+    pageSrc + "\nreturn game;"
   );
   game = load(
     win, doc, win.getComputedStyle, win.matchMedia, win.MutationObserver,

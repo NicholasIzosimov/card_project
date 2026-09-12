@@ -6,12 +6,12 @@
    the physics that had to be kept in step by hand — the one failure
    the test suite structurally cannot see, since it only reads sim.js.
 
-   Now it is generated. `Weightless Deck.html` + `sim.js` are the only
-   sources of truth.
+   Now it is generated. `Weightless Deck.html` and the scripts it
+   loads are the only sources of truth.
 
-   The fragment inlines sim.js rather than linking it, because an
-   embedded fragment cannot rely on the host page serving a sibling
-   sim.js from the right path.
+   The fragment inlines the scripts rather than linking them, because
+   an embedded fragment cannot rely on the host page serving siblings
+   from the right path.
 
      node tools/build-body.mjs           write deck.body.html
      node tools/build-body.mjs --check   verify it is up to date (CI)
@@ -25,19 +25,20 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "src");
 const CHECK = process.argv.includes("--check");
 
 const html = readFileSync(join(ROOT, "Weightless Deck.html"), "utf8");
-const sim = readFileSync(join(ROOT, "sim.js"), "utf8");
 
 function build() {
   let out = html;
 
-  // inline sim.js so the fragment is self-contained
-  const tag = /<script\s+src=["']sim\.js["']\s*><\/script>\n?/;
-  if (!tag.test(out)) {
-    throw new Error("no <script src=\"sim.js\"> tag in Weightless Deck.html");
+  // inline every script the page loads, in place and in order
+  let inlined = 0;
+  out = out.replace(/<script\s+src=["']([^"']+)["']\s*><\/script>\n?/g, (_, file) => {
+    inlined++;
+    return "<script>\n/* --- inlined from " + file + " by tools/build-body.mjs --- */\n" +
+           readFileSync(join(ROOT, file), "utf8").trimEnd() + "\n</script>\n";
+  });
+  if (!inlined) {
+    throw new Error("no <script src=\"...\"> tags in Weightless Deck.html");
   }
-  out = out.replace(tag,
-    "<script>\n/* --- inlined from sim.js by tools/build-body.mjs --- */\n" +
-    sim.trimEnd() + "\n</script>\n");
 
   // drop the document wrapper; keep title, links, style, markup, scripts
   const start = out.indexOf('<link rel="preconnect"');
@@ -69,5 +70,5 @@ if (CHECK) {
 } else {
   writeFileSync(path, generated);
   console.log(`deck.body.html  ${generated.split("\n").length} lines ` +
-              `(sim.js inlined, ${(generated.length / 1024).toFixed(1)} KB)`);
+              `(scripts inlined, ${(generated.length / 1024).toFixed(1)} KB)`);
 }
