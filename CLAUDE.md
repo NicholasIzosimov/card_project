@@ -239,18 +239,24 @@ to a card.**
 ## Layout note
 
 The live game is `src/`; `test/`, `tools/` and `package.json` stay at the
-root and reach into it. The TypeScript port will get its own sibling folder.
+root and reach into it. The TypeScript port went in place rather than into a
+sibling folder, so `src/` is the only live copy of the physics — which is
+what step 1 existed to guarantee.
 
-`html version/` is a **frozen reference** — the single-file JS version as it
-stood before the sim/rules/view split. Nothing reads it, no test covers it,
-and it should not be edited. It is there to diff against, and it has earned
-that twice: both the layer split and the TypeScript port were checked by
-recording every canvas call and argument for 90 frames at a fixed seed and
-diffing the stream against this page. 118,105 operations, identical, from
-the source modules and from the minified bundle alike.
+**`Don't Touch For Now/`** (formerly `html version/`) is a frozen reference:
+the single-file JS game as it stood before the sim/rules/view split. Nothing
+in the project reads it, no test covers it, no build sees it, and it should
+not be edited — the name is the instruction.
 
-The TS port now *is* `src/`, so there is one live copy of the physics —
-which is what step 1 existed to guarantee.
+It is kept because it is the baseline every refactor gets diffed against, and
+it has earned that twice. Both the layer split and the TypeScript port were
+checked by recording every canvas call and argument for 90 frames at a fixed
+seed and diffing the stream against this page: 118,105 operations, identical
+each time, from the source modules and from the minified bundle alike.
+
+It is also the last version that runs by double-clicking — classic scripts,
+no server, no build — which makes it the quickest way to see what the table
+looked like before any of this.
 
 ## Roadmap
 
